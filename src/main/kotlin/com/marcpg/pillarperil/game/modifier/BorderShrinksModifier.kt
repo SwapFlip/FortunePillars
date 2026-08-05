@@ -1,6 +1,7 @@
 package com.marcpg.pillarperil.game.modifier
 
 import com.marcpg.libpg.util.component
+import com.marcpg.libpg.util.locale
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameModifier
 import com.marcpg.pillarperil.game.GameModifierCompanion
@@ -24,6 +25,7 @@ class BorderShrinksModifier(game: Game) : GameModifier(game) {
 
     private val step = Configuration.provider.getInt("modifiers.border-shrinks.step", 4)
     private val minRadius = Configuration.provider.getInt("modifiers.border-shrinks.min-radius", 5)
+    private val damage = Configuration.provider.getDouble("modifiers.border-shrinks.damage", 1.0)
 
     private var centerX = 0.0
     private var centerZ = 0.0
@@ -51,8 +53,8 @@ class BorderShrinksModifier(game: Game) : GameModifier(game) {
 
         game.players.forEach { p ->
             p.showTitle(Title.title(
-                component("Border Shrinks!", NamedTextColor.RED),
-                component("Safe area is now ${radius.toInt()} blocks.", NamedTextColor.YELLOW)
+                p.locale().component("modifier.border-shrinks.shrinking", color = NamedTextColor.RED),
+                p.locale().component("modifier.border-shrinks.name", color = NamedTextColor.YELLOW)
             ))
         }
     }
@@ -63,7 +65,7 @@ class BorderShrinksModifier(game: Game) : GameModifier(game) {
         game.players.forEach { p ->
             val location = p.player.location
             if (hypot(location.x - centerX, location.z - centerZ) > radius)
-                p.player.damage(1.0)
+                p.player.damage(damage)
         }
     }
 

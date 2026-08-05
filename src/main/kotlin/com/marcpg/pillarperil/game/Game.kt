@@ -28,8 +28,11 @@ import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.title.Title
 import org.bukkit.*
+import org.bukkit.entity.Item
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
 import java.util.Locale
+import java.util.UUID
 import io.papermc.paper.scoreboard.numbers.NumberFormat
 import kotlin.math.atan2
 
@@ -52,10 +55,10 @@ abstract class Game(
         private val itemTimeColor = listOf(TextColor.color(0x0022FF), TextColor.color(0x3399FF))
 
         fun getColor(left: Float): BossBar.Color = when {
-            left < 0.2 -> BossBar.Color.BLUE
-            left < 0.4 -> BossBar.Color.GREEN
+            left < 0.2 -> BossBar.Color.RED
+            left < 0.4 -> BossBar.Color.RED
             left < 0.6 -> BossBar.Color.YELLOW
-            left < 0.8 -> BossBar.Color.RED
+            left < 0.8 -> BossBar.Color.GREEN
             else -> BossBar.Color.PINK
         }
 
@@ -235,6 +238,9 @@ abstract class Game(
 
         bossBar = bossBarCreator().also { it.start() }
 
+        if (Configuration.itemCleanupInterval > 0)
+            addTickEvent(Configuration.itemCleanupInterval.toLong() * 20L) { removeDroppedItems() }
+
         timeLeft.set(info.timeLimit())
         itemCountdown.set(itemCountdown())
 
@@ -313,6 +319,14 @@ abstract class Game(
         return null
     }
 
+    fun player(uuid: UUID, onlyAlive: Boolean = true): PillarPlayer? {
+        for (player in (if (onlyAlive) players else initialPlayers)) {
+            if (player.uuid() == uuid)
+                return player
+        }
+        return null
+    }
+
     // ================ GAME-LOGIC METHODS ================
 
     fun eliminate(player: PillarPlayer) {
@@ -346,6 +360,11 @@ abstract class Game(
             } else {
                 player.player.gameMode = GameMode.SPECTATOR
                 player.player.teleport(map?.spectatorLocation(world) ?: center)
+                player.player.inventory.setItem(8, ItemStack(Material.COMPASS).apply {
+                    val meta = itemMeta
+                    meta.displayName(player.locale().component("spectator.menu.title", NamedTextColor.AQUA))
+                    itemMeta = meta
+                })
             }
 
             modifiers.forEach { it.onPostPlayerDeath(player) }
@@ -356,10 +375,19 @@ abstract class Game(
         if (ending || players.isEmpty()) return
 
         if (tick.isSecond(startingTick)) {
-            if (itemCountdown.get() <= 0) {
+            val countdown = itemCountdown.get()
+            if (countdown <= 0) {
                 if (!spawnCagesReleased) {
                     spawnCagesReleased = true
                     Cage.clearGameCages()
+
+                    players.forEach { p ->
+                        p.showTitle(Title.title(
+                            p.locale().component("game.start.go", color = NamedTextColor.GREEN),
+                            p.locale().component("game.cages.open", color = NamedTextColor.YELLOW)
+                        ))
+                    }
+                    players.playSoundSafe(Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 2.0f)
                 }
 
                 modifiers.forEach { it.onItemCycle() }
@@ -368,6 +396,14 @@ abstract class Game(
                 players.forEach { addItem(it) }
                 itemCountdown.set(itemCountdown())
             } else {
+                if (countdown <= 3)
+                    players.forEach { p ->
+                        p.showTitle(Title.title(
+                            component(countdown.toString(), NamedTextColor.YELLOW).decorate(TextDecoration.BOLD),
+                            p.locale().component("game.start.countdown", countdown.toString(), color = NamedTextColor.GRAY)
+                        ))
+                    }
+
                 players.playSoundSafe(Sound.UI_BUTTON_CLICK, 0.2f, 2.0f) {
                     itemCountdown.get() <= Configuration.soundEffectsCooldown
                 }
@@ -382,6 +418,19 @@ abstract class Game(
         tickEvents.filter { tick.isInInterval(startingTick, it.value) }.forEach { it.key() }
 
         modifiers.forEach { it.tick(tick) }
+    }
+
+    // Removes dropped items that have been on the ground for more than 30 seconds, to keep long games
+    // from accumulating lag. The cleanup only touches items that were dropped during this game's arena.
+    private fun removeDroppedItems() {
+        val bounds = arenaBounds
+        world.getEntities().filterIsInstance<Item>().forEach { item ->
+            if (item.ticksLived < 30 * 20) return@forEach
+            if (bounds != null && (item.location.x < bounds.minX || item.location.x > bounds.maxX ||
+                    item.location.y < bounds.minY || item.location.y > bounds.maxY ||
+                    item.location.z < bounds.minZ || item.location.z > bounds.maxZ)) return@forEach
+            item.remove()
+        }
     }
 
     fun end(cause: EndingCause, winners: List<PillarPlayer> = listOf()) {

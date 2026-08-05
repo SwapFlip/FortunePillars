@@ -15,13 +15,28 @@ import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.Sound
 import org.bukkit.entity.Player
+import java.util.UUID
 
 class PillarPlayer(player: Player, val game: Game) : PlayerMinecraftReceiver(player) {
+    companion object {
+        private val rareItems = setOf(
+            Material.NETHERITE_SWORD, Material.NETHERITE_AXE, Material.NETHERITE_PICKAXE,
+            Material.NETHERITE_HELMET, Material.NETHERITE_CHESTPLATE, Material.NETHERITE_LEGGINGS, Material.NETHERITE_BOOTS,
+            Material.DIAMOND_SWORD, Material.DIAMOND_AXE, Material.DIAMOND_PICKAXE,
+            Material.DIAMOND_HELMET, Material.DIAMOND_CHESTPLATE, Material.DIAMOND_LEGGINGS, Material.DIAMOND_BOOTS,
+            Material.GOLDEN_APPLE, Material.ENCHANTED_GOLDEN_APPLE, Material.TOTEM_OF_UNDYING, Material.ELYTRA, Material.TRIDENT,
+        )
+    }
+
     var simpleScoreboard: SimpleScoreboard? = null
     var simpleActionBar: SimpleActionBar? = null
 
     var kills: Int = 0
     var deathTime: Int? = null
+
+    // Last player who damaged us and the tick it happened, used to credit void/fall knock-offs.
+    var lastDamagedBy: UUID? = null
+    var lastDamageTick: Int = Int.MIN_VALUE
 
     val initialSnapshot = PlayerSnapshot(player)
 
@@ -50,6 +65,10 @@ class PillarPlayer(player: Player, val game: Game) : PlayerMinecraftReceiver(pla
             var item = available.random().toItemStackSafe()
             for (modifier in game.modifiers) {
                 item = modifier.onItemReceive(item)
+            }
+
+            if (item.type in rareItems) {
+                playSoundSafe(Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 2.0f)
             }
 
             val offhand = player.inventory.itemInOffHand

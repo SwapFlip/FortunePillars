@@ -106,6 +106,14 @@ queue:
   # Default: 60
   start-delay: 60
 
+  # The countdown when the queue is at least half full, up to `max-players`.
+  # Default: 30
+  start-delay-half: 30
+
+  # The countdown when the queue is completely full.
+  # Default: 5
+  start-delay-full: 5
+
   # How players enter or leave the queue.
   #   Available Methods:
   #     | -> command  : use '/queue' to enter the queue
@@ -203,6 +211,11 @@ items:
     - jigsaw
     - dragon_egg
     - ender_dragon_spawn_egg
+
+  # The interval in seconds between removing dropped items (entities) from the arena, to prevent lag
+  # in long games. Set to 0 to disable. Items that have been on the ground for less than 30 seconds are kept.
+  # Default: 120
+  cleanup-interval: 120
 
   # The weighted loot pool used by the "normal" game mode, inspired by CubeCraft's Pillars of Fortune.
   # Every item gets a weight; the higher the weight, the more likely it drops.
@@ -420,6 +433,7 @@ modifiers:
   lava-rises:
     interval: 5 # Seconds between each lava level rise.
     start-y: 32 # The y-coordinate the lava starts at and rises from.
+    start-delay: 60 # Seconds after the game starts before the lava begins to rise.
 
   # TNT Falls - TNT randomly falls onto the arena with a configurable fuse.
   tnt-falls:
@@ -430,6 +444,21 @@ modifiers:
   border-shrinks:
     step: 4 # Blocks the safe radius shrinks per item drop.
     min-radius: 5 # The smallest the safe radius can get.
+    damage: 1.0 # Damage dealt per second to players outside of the safe radius.
+
+
+# End of Game #
+# Seconds to keep the game registered after it ended, so kill-cam, stats and announcements don't
+# get cut off by an instant cleanup. Set to 0 to clean up instantly.
+# Default: 10
+time-after-game: 10
+
+
+# Kill Credit Window #
+# Seconds during which the last damage a player took is remembered, so void/fall knock-offs are
+# credited to the player who dealt the damage.
+# Default: 15
+kill-credit-window: 15
 
 
 # Disable FastStats Integration #
@@ -441,4 +470,4 @@ disable-faststats: false
 
 # The Configuration Version #
 # DO NOT MODIFY THIS, OR THE CONFIGURATION WILL LIKELY BREAK OR BE RESET!
-version: 8
+version: 9

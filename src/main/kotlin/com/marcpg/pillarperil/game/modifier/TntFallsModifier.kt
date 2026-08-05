@@ -6,7 +6,9 @@ import com.marcpg.pillarperil.game.GameModifier
 import com.marcpg.pillarperil.game.GameModifierCompanion
 import com.marcpg.pillarperil.game.util.GameModifierInfo
 import com.marcpg.pillarperil.util.Configuration
+import com.marcpg.pillarperil.util.playSoundSafe
 import org.bukkit.Location
+import org.bukkit.Sound
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 
@@ -36,6 +38,8 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
 
     override fun onItemCycle() {
         val bounds = game.arenaBounds ?: return
+
+        game.players.playSoundSafe(Sound.ENTITY_TNT_PRIMED, 1.0f, 1.2f)
 
         runCatching {
             repeat(perDrop) {

@@ -16,6 +16,10 @@ class ArenaMap(
     var spectatorSpawn: BlockPos? = null,
     var deathHeight: Int? = null,
 ) {
+    // Nice name and description shown in the map selection menu; set in the map's yml file.
+    var displayName: String? = null
+    var description: String? = null
+
     fun originLocation(world: World) = origin.toLocation(world)
     fun spectatorLocation(world: World): Location = spectatorSpawn?.toLocation(world) ?: origin.toLocation(world)
 }

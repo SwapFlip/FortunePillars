@@ -35,7 +35,10 @@ object MapManager {
         val spectator = yaml.getIntegerList("spectator-spawn").let { if (it.size == 3) BlockPos(it[0], it[1], it[2]) else null }
         val deathHeight = if (yaml.contains("death-height")) yaml.getInt("death-height") else null
 
-        maps[name] = ArenaMap(name, schematic, world, origin, spawns, spectator, deathHeight)
+        maps[name] = ArenaMap(name, schematic, world, origin, spawns, spectator, deathHeight).also {
+            it.displayName = yaml.getString("display-name")
+            it.description = yaml.getString("description")
+        }
     }
 
     fun save(map: ArenaMap) {
@@ -48,6 +51,8 @@ object MapManager {
         yaml.set("spawns", map.spawns.map { mapOf("x" to it.x, "y" to it.y, "z" to it.z) })
         map.spectatorSpawn?.let { yaml.set("spectator-spawn", listOf(it.x, it.y, it.z)) }
         map.deathHeight?.let { yaml.set("death-height", it) }
+        map.displayName?.let { yaml.set("display-name", it) }
+        map.description?.let { yaml.set("description", it) }
         yaml.save(File(folder, "${map.name}.yml"))
     }
 
@@ -70,14 +75,17 @@ object MapManager {
     fun saveSchematic(map: ArenaMap, world: World, corner: BlockPos): SavedSchematic? =
         SchematicSaver.save(world, map.origin, corner, schematicFile(map.name))
 
-    fun pickMap(playerCount: Int, world: World): ArenaMap? {
+    fun pickMap(playerCount: Int, world: World, exclude: String? = null): ArenaMap? {
         val pool = if (Configuration.queueMapPool.isEmpty())
             maps.values
         else
             maps.values.filter { it.name in Configuration.queueMapPool }
 
-        return pool.filter { it.world == world.name && it.spawns.size >= playerCount && it.spectatorSpawn != null }
-            .shuffled()
-            .firstOrNull()
+        val candidates = pool.filter {
+            it.world == world.name && it.spawns.size >= playerCount && it.spectatorSpawn != null && schematicFile(it.name).exists()
+        }
+        val filtered = if (exclude != null) candidates.filter { it.name != exclude } else candidates
+
+        return (filtered.ifEmpty { candidates }).shuffled().firstOrNull()
     }
 }

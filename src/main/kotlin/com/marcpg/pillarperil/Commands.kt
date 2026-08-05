@@ -6,6 +6,7 @@ import com.marcpg.libpg.lang.string
 import com.marcpg.libpg.util.component
 import com.marcpg.libpg.util.locale
 import com.marcpg.libpg.util.miniMessage
+import com.marcpg.pillarperil.event.QueueEvents
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.GameManager
@@ -200,6 +201,7 @@ object Commands {
                         return send(sender, locale.component("queue.join.already", color = NamedTextColor.YELLOW))
 
                     QueueManager.add(sender)
+                    QueueEvents.openMapMenu(sender)
                     send(sender, locale.component("queue.join.success", color = NamedTextColor.GREEN))
                 }
                 "leave" -> {

@@ -18,9 +18,10 @@ object Configuration : Config(PaperConfigProvider()) {
         ConfigVersion(id = 6),
         ConfigVersion(id = 7),
         ConfigVersion(id = 8),
+        ConfigVersion(id = 9),
     )
 
-    override val version: Int = 8
+    override val version: Int = 9
 
     var platformHeight by double("platform-height", 200.0)
     var platformMaterial by custom("platform-material", PPEntryTypes.minecraftRegistry(org.bukkit.Registry.MATERIAL), Material.BEDROCK)
@@ -39,6 +40,8 @@ object Configuration : Config(PaperConfigProvider()) {
     var queueMaxPlayers by int("queue.max-players", 8)
     var queueCheckIntervalSecs by int("queue.check-interval", 5)
     var queueStartDelay by int("queue.start-delay", 60)
+    var queueStartDelayHalf by int("queue.start-delay-half", 30)
+    var queueStartDelayFull by int("queue.start-delay-full", 5)
     var queueMethod by enum<QueueMethod>("queue.method", QueueMethod.COMMAND)
     var queueMode by custom("queue.mode", PPEntryTypes.registry { Registry.modes }, NormalGame)
     var queueWorldName by custom("queue.world", PPEntryTypes.placeholder, PlaceholderNameGetter("PillarPeril"))
@@ -74,6 +77,10 @@ object Configuration : Config(PaperConfigProvider()) {
     ))
 
     var disableFastStats by boolean("disable-faststats", false)
+
+    var timeAfterGame by int("time-after-game", 10)
+    var killCreditWindow by int("kill-credit-window", 15)
+    var itemCleanupInterval by int("items.cleanup-interval", 120)
 
     // The void death height. Players below this y-coordinate die.
     val deathHeight get() = 0.0

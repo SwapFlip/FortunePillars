@@ -164,6 +164,8 @@ object Cage {
         cages.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
         towers.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
         if (player.isOnline) {
+            player.exp = 0.0f
+            player.level = 0
             player.inventory.setItem(0, null)
             player.inventory.setItem(8, null)
         }

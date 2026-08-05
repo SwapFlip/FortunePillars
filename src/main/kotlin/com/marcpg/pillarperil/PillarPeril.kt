@@ -5,6 +5,7 @@ import com.marcpg.libpg.lang.Translation
 import com.marcpg.pillarperil.event.GameEvents
 import com.marcpg.pillarperil.event.PlayerEvents
 import com.marcpg.pillarperil.event.QueueEvents
+import com.marcpg.pillarperil.event.SpectatorEvents
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.GameManager
@@ -37,6 +38,7 @@ class PillarPeril : JavaPlugin() {
         server.pluginManager.registerEvents(GameEvents, this)
         server.pluginManager.registerEvents(PlayerEvents, this)
         server.pluginManager.registerEvents(QueueEvents, this)
+        server.pluginManager.registerEvents(SpectatorEvents, this)
 
         Commands.register()
     }
