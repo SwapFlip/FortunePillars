@@ -19,9 +19,10 @@ object Configuration : Config(PaperConfigProvider()) {
         ConfigVersion(id = 7),
         ConfigVersion(id = 8),
         ConfigVersion(id = 9),
+        ConfigVersion(id = 10),
     )
 
-    override val version: Int = 9
+    override val version: Int = 10
 
     var platformHeight by double("platform-height", 200.0)
     var platformMaterial by custom("platform-material", PPEntryTypes.minecraftRegistry(org.bukkit.Registry.MATERIAL), Material.BEDROCK)
@@ -81,6 +82,7 @@ object Configuration : Config(PaperConfigProvider()) {
     var timeAfterGame by int("time-after-game", 10)
     var killCreditWindow by int("kill-credit-window", 15)
     var itemCleanupInterval by int("items.cleanup-interval", 120)
+    var avoidHeldSlot by boolean("items.avoid-held-slot", true)
 
     // The void death height. Players below this y-coordinate die.
     val deathHeight get() = 0.0

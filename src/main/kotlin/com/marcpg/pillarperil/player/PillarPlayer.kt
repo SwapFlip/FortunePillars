@@ -74,6 +74,15 @@ class PillarPlayer(player: Player, val game: Game) : PlayerMinecraftReceiver(pla
             val offhand = player.inventory.itemInOffHand
             if (offhand.type == Material.AIR && kotlin.random.Random.nextInt(5) == 0) {
                 player.inventory.setItemInOffHand(item)
+            } else if (Configuration.avoidHeldSlot) {
+                val contents = player.inventory.contents
+                val heldSlot = player.inventory.heldItemSlot
+                val freeSlots = contents.indices.filter { it != heldSlot && (contents[it]?.type ?: Material.AIR) == Material.AIR }
+                if (freeSlots.isEmpty()) {
+                    player.world.dropItemNaturally(player.location, item)
+                } else {
+                    player.inventory.setItem(freeSlots.random(), item)
+                }
             } else {
                 player.inventory.addItem(item).values.forEach { leftover ->
                     player.world.dropItemNaturally(player.location, leftover)

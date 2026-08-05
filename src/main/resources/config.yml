@@ -217,6 +217,11 @@ items:
   # Default: 120
   cleanup-interval: 120
 
+  # Whether newly received items are never placed into the currently held slot, so you can keep
+  # placing blocks while collecting. If no other slot is free, the item drops on the ground instead.
+  # Default: true
+  avoid-held-slot: true
+
   # The weighted loot pool used by the "normal" game mode, inspired by CubeCraft's Pillars of Fortune.
   # Every item gets a weight; the higher the weight, the more likely it drops.
   # Unequally weighted loot makes rare/op items exciting while keeping common loot plentiful.
@@ -470,4 +475,4 @@ disable-faststats: false
 
 # The Configuration Version #
 # DO NOT MODIFY THIS, OR THE CONFIGURATION WILL LIKELY BREAK OR BE RESET!
-version: 9
+version: 10
