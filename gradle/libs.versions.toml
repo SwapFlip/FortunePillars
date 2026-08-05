@@ -1,0 +1,18 @@
+[versions]
+faststats = "0.22.0"
+jpnilla-run = "3.0.2"
+kotlin = "2.3.0"
+ktlibpg = "2.1.1"
+paper = "1.20.4-R0.1-SNAPSHOT"
+shadow = "9.4.1"
+versionCatalogueUpdate = "1.1.0"
+
+[plugins]
+jpnilla-runPaper = { id = "xyz.jpenilla.run-paper", version.ref = "jpnilla-run" }
+kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+versionCatalogueUpdate = { id = "nl.littlerobots.version-catalog-update", version.ref = "versionCatalogueUpdate" }
+
+[libraries]
+faststats = { module = "dev.faststats.metrics:bukkit", version.ref = "faststats" }
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper" }
