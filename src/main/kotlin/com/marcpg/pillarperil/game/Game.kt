@@ -7,10 +7,17 @@ import com.marcpg.libpg.util.bukkitRunLater
 import com.marcpg.libpg.util.component
 import com.marcpg.libpg.util.miniMessage
 import com.marcpg.pillarperil.PillarPeril
+import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.GameInfo
 import com.marcpg.pillarperil.game.util.GameManager
 import com.marcpg.pillarperil.game.util.QueueManager
 import com.marcpg.pillarperil.generation.Buildings
+import com.marcpg.pillarperil.map.ArenaMap
+import com.marcpg.pillarperil.map.BlockPos
+import com.marcpg.pillarperil.map.MapBounds
+import com.marcpg.pillarperil.map.MapManager
+import com.marcpg.pillarperil.map.MapPaster
+import com.marcpg.pillarperil.map.SchematicReader
 import com.marcpg.pillarperil.player.PillarPlayer
 import com.marcpg.pillarperil.util.*
 import net.kyori.adventure.bossbar.BossBar
@@ -30,7 +37,7 @@ abstract class Game(
     val id: String,
     center: Location,
     protected val bukkitPlayers: List<Player>,
-    val modifiers: List<GameModifier>,
+    var modifiers: List<GameModifier>,
 ): Ticking {
     enum class EndingCause {
         FORCE,
@@ -74,13 +81,26 @@ abstract class Game(
     lateinit var items: List<Material> protected set
     lateinit var buildings: Buildings private set
 
+    // Set before init() when the game runs on a pasted arena map:
+    var map: ArenaMap? = null
+    var arenaBounds: MapBounds? = null
+    var customItemCountdown: (() -> Long)? = null
+
     // ==================== GAME STATE ====================
 
     val timeLeft = Time()
     val itemCountdown = Time(0, allowNegatives = true)
 
+    private var spawnCagesReleased = false
+
+    val deathHeight: Double get() = map?.deathHeight?.toDouble() ?: Configuration.deathHeight
+
+    fun itemCountdown(): Long = customItemCountdown?.invoke() ?: info.itemCountdown()
+
+    fun typeName(locale: Locale): String = modifiers.firstOrNull()?.info?.name(locale) ?: "-"
+
     val itemCountdownPercentage: Float
-        get() = (itemCountdown.get().toFloat() / (info.itemCountdown().toFloat() - 1)).coerceIn(0.0f, 1.0f)
+        get() = (itemCountdown.get().toFloat() / (itemCountdown().toFloat() - 1)).coerceIn(0.0f, 1.0f)
 
     private val tickEvents = mutableMapOf<() -> Unit, Int>()
     private val itemEvents = mutableListOf<() -> Unit>()
@@ -99,6 +119,8 @@ abstract class Game(
                 PlaceholderScoreboardEntry { _ ->
                     MiniMessage.miniMessage().deserialize(
                         line.replace("<mode>", info.name(p.locale()))
+                            .replace("<type>", typeName(p.locale()))
+                            .replace("<map>", map?.name ?: "-")
                             .replace("<player>", p.name())
                             .replace("<time>", timeLeft.oneUnitFormatted)
                             .replace("<kills>", p.kills.toString())
@@ -198,22 +220,51 @@ abstract class Game(
         modifiers.forEach { it.init() }
 
         buildings = Buildings(this, info.horGen().constructGen(this), info.vertGen().constructGen(this))
-        val centeredCenter = center.toCenterLocation()
-        buildings.generate().forEachIndexed { i, l ->
-            val location = l.clone().add(0.0, 1.0, 0.0).toCenterLocation()
-            location.yaw = Math.toDegrees(atan2(-(centeredCenter.x - location.x), centeredCenter.z - location.z)).toFloat()
-            players[i].teleport(location)
-        }
+
+        val map = this.map
+        if (map != null)
+            startOnMap(map)
+        else
+            buildAndTeleport()
 
         modifiers.forEach { it.customBuild() }
 
         bossBar = bossBarCreator().also { it.start() }
 
         timeLeft.set(info.timeLimit())
-        itemCountdown.set(info.itemCountdown())
+        itemCountdown.set(itemCountdown())
 
         GameManager.add(this)
         info("Initialized the game.")
+    }
+
+    private fun startOnMap(map: ArenaMap) {
+        val file = MapManager.schematicFile(map.schematic)
+        val schematic = file?.let { runCatching { SchematicReader.read(it) }.getOrNull() }
+
+        if (schematic == null) {
+            error("Could not read schematic \"${map.schematic}\" for map \"${map.name}\", falling back to default generation.", IllegalStateException("Missing or invalid schematic file."))
+            buildAndTeleport()
+            return
+        }
+
+        arenaBounds = MapPaster.paste(schematic, world, map.origin)
+
+        players.forEachIndexed { i, p ->
+            val spawn = map.spawns.getOrNull(i) ?: map.origin
+            val feet = spawn.toLocation(world, yOffset = 3.0)
+            Cage.gameCage(p.player, feet)
+            p.player.teleport(feet)
+        }
+    }
+
+    private fun buildAndTeleport() {
+        val centeredCenter = center.toCenterLocation()
+        buildings.generate().forEachIndexed { i, l ->
+            val location = l.clone().add(0.0, 1.0, 0.0).toCenterLocation()
+            location.yaw = Math.toDegrees(atan2(-(centeredCenter.x - location.x), centeredCenter.z - location.z)).toFloat()
+            players[i].teleport(location)
+        }
     }
 
     open fun addItem(player: PillarPlayer) = player.giveItems(items)
@@ -276,7 +327,7 @@ abstract class Game(
                 player.player.teleport(Configuration.getSpawnLocation(player.player.world))
             } else {
                 player.player.gameMode = GameMode.SPECTATOR
-                player.player.teleport(center)
+                player.player.teleport(map?.spectatorLocation(world) ?: center)
             }
 
             modifiers.forEach { it.onPostPlayerDeath(player) }
@@ -288,11 +339,16 @@ abstract class Game(
 
         if (tick.isSecond(startingTick)) {
             if (itemCountdown.get() <= 0) {
+                if (!spawnCagesReleased) {
+                    spawnCagesReleased = true
+                    Cage.clearGameCages()
+                }
+
                 modifiers.forEach { it.onItemCycle() }
                 itemEvents.forEach { it() }
 
                 players.forEach { addItem(it) }
-                itemCountdown.set(info.itemCountdown())
+                itemCountdown.set(itemCountdown())
             } else {
                 players.playSoundSafe(Sound.UI_BUTTON_CLICK, 0.2f, 2.0f) {
                     itemCountdown.get() <= Configuration.soundEffectsCooldown
@@ -377,5 +433,6 @@ abstract class Game(
         initialPlayers.forEach { it.clear(true) }
         buildings.reset()
         bossBar?.stop()
+        modifiers.forEach { it.onEnd() }
     }
 }

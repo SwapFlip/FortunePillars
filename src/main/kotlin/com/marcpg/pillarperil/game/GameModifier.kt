@@ -18,4 +18,5 @@ abstract class GameModifier(
     open fun onItemReceive(item: ItemStack): ItemStack = item
     open fun onPlayerDeath(player: PillarPlayer) {}
     open fun onPostPlayerDeath(player: PillarPlayer) {}
+    open fun onEnd() {}
 }

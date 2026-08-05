@@ -6,7 +6,7 @@ import com.marcpg.libpg.util.BasicOptional
 import com.marcpg.libpg.util.toLocation
 import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.Registry
-import com.marcpg.pillarperil.game.mode.OriginalGame
+import com.marcpg.pillarperil.game.mode.NormalGame
 import org.bukkit.*
 
 object Configuration : Config(PaperConfigProvider()) {
@@ -38,11 +38,13 @@ object Configuration : Config(PaperConfigProvider()) {
     var queueMaxPlayers by int("queue.max-players", 8)
     var queueCheckIntervalSecs by int("queue.check-interval", 5)
     var queueMethod by enum<QueueMethod>("queue.method", QueueMethod.COMMAND)
-    var queueMode by custom("queue.mode", PPEntryTypes.registry { Registry.modes }, OriginalGame)
+    var queueMode by custom("queue.mode", PPEntryTypes.registry { Registry.modes }, NormalGame)
     var queueWorldName by custom("queue.world", PPEntryTypes.placeholder, PlaceholderNameGetter("PillarPeril"))
     var queueCord by custom("queue.location", ExtendedEntryTypes.cordMap, Cord(0.0, -64.0, 0.0))
     var queuePreCommands by custom("queue.pre-commands", PPEntryTypes.placeholder.list, listOf())
     var queuePostCommands by custom("queue.post-commands", PPEntryTypes.placeholder.list, listOf())
+    var queueMapPool by custom("queue.map-pool", BaseEntryTypes.string.list, emptyList())
+    var queueDefaultTime by int("queue.default-item-time", 10)
 
     var scoreboardTitle by string("scoreboard.title", "<bold><gradient:#71CCF8:#FC91EC:#F87171>Pillar Peril")
     var scoreboardLines by custom("scoreboard.lines", BaseEntryTypes.string.list, emptyList())
@@ -51,7 +53,23 @@ object Configuration : Config(PaperConfigProvider()) {
     var soundEffectsCooldown by int("sound-effects.cooldown", 3)
     var soundEffectsItem by boolean("sound-effects.item", true)
 
-    var itemsBlacklist by custom("items.blacklist", PPEntryTypes.minecraftRegistry(org.bukkit.Registry.MATERIAL).list, listOf(Material.AIR, Material.BEDROCK, Material.ENDER_DRAGON_SPAWN_EGG))
+    var itemsBlacklist by custom("items.blacklist", PPEntryTypes.minecraftRegistry(org.bukkit.Registry.MATERIAL).list, listOf(
+        Material.AIR,
+        Material.BEDROCK,
+        Material.COMMAND_BLOCK,
+        Material.CHAIN_COMMAND_BLOCK,
+        Material.REPEATING_COMMAND_BLOCK,
+        Material.COMMAND_BLOCK_MINECART,
+        Material.BARRIER,
+        Material.STRUCTURE_BLOCK,
+        Material.STRUCTURE_VOID,
+        Material.LIGHT,
+        Material.DEBUG_STICK,
+        Material.SPAWNER,
+        Material.JIGSAW,
+        Material.DRAGON_EGG,
+        Material.ENDER_DRAGON_SPAWN_EGG,
+    ))
 
     var disableFastStats by boolean("disable-faststats", false)
 

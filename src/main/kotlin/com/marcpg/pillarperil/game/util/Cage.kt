@@ -4,6 +4,7 @@ import com.marcpg.libpg.util.component
 import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.util.Configuration
+import com.marcpg.pillarperil.util.VoidChunkGenerator
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -23,6 +24,8 @@ object Cage {
     const val LOBBY_RADIUS = 10.0
 
     private val cages = mutableMapOf<UUID, MutableList<Block>>()
+    private val towers = mutableMapOf<UUID, MutableList<Block>>()
+    private val gameCages = mutableListOf<Block>()
 
     fun lobby(player: Player, index: Int, count: Int) {
         val world = resolveWorld() ?: return
@@ -33,7 +36,7 @@ object Cage {
         val spot = center.clone().add(radius * cos(angle), 0.0, radius * sin(angle))
 
         val top = Configuration.platformHeight.toInt()
-        buildTower(world, spot, top)
+        towers[player.uniqueId] = buildTower(world, spot, top)
         val feet = Location(world, spot.x, top + 2.0, spot.z)
         player.teleport(feet)
         place(player, feet)
@@ -53,7 +56,7 @@ object Cage {
         }
 
         return Bukkit.getWorld(name) ?: runCatching {
-            WorldCreator(name).createWorld()
+            WorldCreator(name).generator(VoidChunkGenerator()).createWorld()
         }.onFailure {
             PillarPeril.LOG.error("Could not create queue world \"$name\".", it)
         }.getOrNull()
@@ -61,17 +64,34 @@ object Cage {
 
     private fun resolveWorld(): World? = ensureQueueWorld()
 
-    private fun buildTower(world: World, spot: Location, top: Int) {
+    private fun buildTower(world: World, spot: Location, top: Int): MutableList<Block> {
         val x = spot.blockX
         val z = spot.blockZ
-        for (y in (top - 20)..top)
-            world.getBlockAt(x, y, z).type = Configuration.platformMaterial
+        val blocks = mutableListOf<Block>()
+        for (y in (top - 20)..top) {
+            val block = world.getBlockAt(x, y, z)
+            blocks.add(block)
+            block.type = Configuration.platformMaterial
+        }
+        return blocks
+    }
+
+    fun gameCage(player: Player, feet: Location) {
+        val placed = buildCage(feet)
+        gameCages += placed
+    }
+
+    fun clearGameCages() {
+        gameCages.forEach { it.type = Material.AIR }
+        gameCages.clear()
     }
 
     private fun place(player: Player, feet: Location) {
-        clear(player)
-        val placed = mutableListOf<Block>()
+        cages.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
+        cages[player.uniqueId] = buildCage(feet).toMutableList()
+    }
 
+    private fun buildCage(feet: Location): List<Block> {
         val origin = feet.block
         origin.type = Material.AIR
 
@@ -82,6 +102,7 @@ object Cage {
         val maxY = origin.y + 3
         val maxZ = origin.z + 1
 
+        val placed = mutableListOf<Block>()
         for (x in minX..maxX) for (y in minY..maxY) for (z in minZ..maxZ) {
             val isShell = x == minX || x == maxX || y == minY || y == maxY || z == minZ || z == maxZ
             if (!isShell) continue
@@ -90,8 +111,7 @@ object Cage {
             placed.add(block)
             block.type = Material.GLASS
         }
-
-        cages[player.uniqueId] = placed
+        return placed
     }
 
     private fun giveLobbyItems(player: Player) {
@@ -111,10 +131,18 @@ object Cage {
 
     fun clear(player: Player) {
         cages.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
+        towers.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
         if (player.isOnline) {
             player.inventory.setItem(0, null)
             player.inventory.setItem(8, null)
         }
+    }
+
+    fun clearTowers() {
+        cages.forEach { (_, blocks) -> blocks.forEach { it.type = Material.AIR } }
+        towers.forEach { (_, blocks) -> blocks.forEach { it.type = Material.AIR } }
+        cages.clear()
+        towers.clear()
     }
 
     fun clearAll(players: Collection<Player>) = players.forEach(::clear)

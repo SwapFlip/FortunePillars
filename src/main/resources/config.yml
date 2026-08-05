@@ -108,8 +108,12 @@ queue:
   method: command
 
   # The game mode to use when starting a new game using the queue.
-  # See below ('modes' section) for list of available game modes.
-  mode: original
+  # This is also the fallback mode when no votes are cast.
+  #   Available Modes:
+  #     | -> normal, balanced, swapper, shuffle (new)
+  #     | -> original, classic, chaos, blocky, item-only, item-shuffle, player-shuffle (legacy)
+  # Default: normal
+  mode: normal
 
   # The world to start the game in. Example value could be `game-{id}`.
   #   Available Placeholders:
@@ -124,6 +128,15 @@ queue:
     x: 0.0
     y: -64.0
     z: 0.0
+
+  # The maps that games can be played on. A random map is picked for every game.
+  # If the list is empty, every saved map (via /pp map setup) can be picked.
+  # Each map must have at least as many spawns as the amount of players in the game.
+  map-pool: []
+
+  # The item-time that is used when no votes are cast (in seconds).
+  #   Available Vote Options: 3, 5, 10, 15
+  default-item-time: 10
 
   # An ordered list of commands to execute before any world or location is accessed.
   # This should only really be used to create a world for the game when using another plugin like MultiVerse.
@@ -168,15 +181,30 @@ sound-effects:
 items:
 
   # A list of all items which will never be given to players, independent of the game mode.
+  # This already excludes all operator-only items by default.
   blacklist:
     - air
     - bedrock
+    - command_block
+    - chain_command_block
+    - repeating_command_block
+    - command_block_minecart
+    - barrier
+    - structure_block
+    - structure_void
+    - light
+    - debug_stick
+    - spawner
+    - jigsaw
+    - dragon_egg
     - ender_dragon_spawn_egg
 
 
 # Scoreboard #
 # The sidebar scoreboard shown during a game. Supports MiniMessage formatting and these placeholders:
 #   | -> '<mode>'   : the name of the game mode
+#   | -> '<type>'   : the name of the game event type (lava rises, tnt falls, ...)
+#   | -> '<map>'    : the name of the map the game is played on
 #   | -> '<player>' : your name
 #   | -> '<time>'   : time remaining in the game
 #   | -> '<kills>'  : your current kill count
@@ -185,6 +213,8 @@ scoreboard:
   title: "<bold><gradient:#71CCF8:#FC91EC:#F87171>Pillar Peril"
   lines:
     - "<gray>Mode: <white><mode>"
+    - "<gray>Type: <white><type>"
+    - "<gray>Map: <white><map>"
     - "<gray>Player: <white><player>"
     - "<gray>Time left: <white><time>"
     - "<gray>Kills: <white><kills>"
@@ -297,6 +327,78 @@ modes:
     generator:
       horizontal: circular
       vertical: pillar
+
+  # Normal Mode - Full loot table with all items.
+  normal:
+    cooldown: 10
+    time-limit: 10min
+    visual:
+      color: "#FFFFFF"
+      show-scoreboard: true
+      show-actionbar: false
+      show-bossbar: true
+    generator:
+      horizontal: circular
+      vertical: pillar
+
+  # Balanced Mode - Mid-tier items only (no netherite, no OP apples).
+  balanced:
+    cooldown: 10
+    time-limit: 10min
+    visual:
+      color: "#FFAA00"
+      show-scoreboard: true
+      show-actionbar: false
+      show-bossbar: true
+    generator:
+      horizontal: circular
+      vertical: pillar
+
+  # Swapper Mode - All player positions swap every 30 seconds.
+  swapper:
+    cooldown: 10
+    time-limit: 8min
+    visual:
+      color: "#FF54FF"
+      show-scoreboard: true
+      show-actionbar: false
+      show-bossbar: true
+    generator:
+      horizontal: circular
+      vertical: pillar
+
+  # Shuffle Mode - Inventories are randomized every 60 seconds.
+  shuffle:
+    cooldown: 10
+    time-limit: 8min
+    visual:
+      color: "#54FFFF"
+      show-scoreboard: true
+      show-actionbar: false
+      show-bossbar: true
+    generator:
+      horizontal: circular
+      vertical: pillar
+
+
+# Game Event Types (Modifiers) #
+# The event type voted on in the queue. Tuning options for each type.
+modifiers:
+
+  # Lava Rises - Every item drop, the lava level rises by one block.
+  lava-rises:
+    step: 1 # Blocks the lava rises per item drop.
+    start-below: 3 # How far below the arena the lava starts.
+
+  # TNT Falls - TNT randomly falls onto the arena with a 10 second fuse.
+  tnt-falls:
+    fuse-ticks: 200 # The fuse duration of the falling TNT (20 ticks = 1 second).
+    per-drop: 1 # Amount of TNT per item drop, multiplied by half the amount of players.
+
+  # Border Shrinks - The safe area shrinks every item drop; players outside take damage.
+  border-shrinks:
+    step: 4 # Blocks the safe radius shrinks per item drop.
+    min-radius: 5 # The smallest the safe radius can get.
 
 
 # Disable FastStats Integration #

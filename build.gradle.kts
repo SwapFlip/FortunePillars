@@ -42,6 +42,7 @@ dependencies {
     compileOnly("com.mojang:brigadier:1.0.18")
 
     implementation(files("libs/ktlibpg-full-${libs.versions.ktlibpg.get()}.jar"))
+    implementation(files("libs/adventure-nbt-4.26.1.jar"))
     implementation(libs.faststats)
 }
 

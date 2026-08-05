@@ -1,6 +1,7 @@
 package com.marcpg.pillarperil
 
 import com.marcpg.pillarperil.game.GameModifierCompanion
+import com.marcpg.pillarperil.game.modifier.*
 import com.marcpg.pillarperil.game.mode.*
 import com.marcpg.pillarperil.generation.horizontal.CircularHorGen
 import com.marcpg.pillarperil.generation.horizontal.RandomHorGen
@@ -26,9 +27,18 @@ object Registry {
         ItemShuffleGame,
         OriginalGame,
         PlayerShuffleGame,
+        NormalGame,
+        BalancedGame,
+        SwapperGame,
+        ShuffleGame,
     ).associateBy { it.gameInfo.namespace }
 
-    val modifiers = listOf<GameModifierCompanion<*>>(
+    val modifiers = listOf(
+        NormalModifier,
+        RisingLavaModifier,
+        TntFallsModifier,
+        BorderShrinksModifier,
+        SpeedrunnerModifier,
     ).associateBy { it.modifierInfo.namespace }
 
     fun load() {

@@ -8,6 +8,7 @@ import com.marcpg.pillarperil.event.QueueEvents
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.GameManager
+import com.marcpg.pillarperil.map.MapManager
 import com.marcpg.pillarperil.util.Configuration
 import com.marcpg.pillarperil.util.Metrics
 import org.bukkit.Bukkit
@@ -29,6 +30,7 @@ class PillarPeril : JavaPlugin() {
 
         Registry.load()
         Configuration.init()
+        MapManager.load()
         Cage.ensureQueueWorld()?.let { LOG.info("Queue world \"${it.name}\" is ready.") }
         Metrics.start()
 

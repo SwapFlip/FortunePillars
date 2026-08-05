@@ -121,3 +121,9 @@ run/
 
 # Avoid ignoring library JARs:
 !/libs/*.jar
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/

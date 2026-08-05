@@ -6,6 +6,7 @@ import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.Registry
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameCompanion
+import com.marcpg.pillarperil.map.MapManager
 import com.marcpg.pillarperil.util.Configuration
 import com.marcpg.pillarperil.util.Ticking
 import net.kyori.adventure.text.format.NamedTextColor
@@ -19,17 +20,22 @@ object QueueManager : Ticking {
     const val RED_COLORS = "#CC2222:#FF8888"
     const val GREEN_COLORS = "#22CC22:#88FF88"
 
+    data class Vote(val mode: String? = null, val type: String? = null, val time: Int? = null)
+
     val queue = ArrayDeque<Player>()
 
-    private val votes = mutableMapOf<UUID, String>()
+    private val votes = mutableMapOf<UUID, Vote>()
 
     private var phase = 0.0
 
-    fun recordVote(player: Player, mode: String) {
-        votes[player.uniqueId] = mode
+    fun recordVote(player: Player, mode: String? = null, type: String? = null, time: Int? = null) {
+        val previous = votes[player.uniqueId] ?: Vote()
+        votes[player.uniqueId] = Vote(mode ?: previous.mode, type ?: previous.type, time ?: previous.time)
     }
 
-    fun voteCounts(): Map<String, Int> = votes.values.groupingBy { it }.eachCount()
+    fun modeVoteCounts(): Map<String, Int> = votes.values.mapNotNull { it.mode }.groupingBy { it }.eachCount()
+    fun typeVoteCounts(): Map<String, Int> = votes.values.mapNotNull { it.type }.groupingBy { it }.eachCount()
+    fun timeVoteCounts(): Map<Int, Int> = votes.values.mapNotNull { it.time }.groupingBy { it }.eachCount()
 
     fun add(player: Player) {
         if (!Configuration.queueEnabled || player in queue || GameManager.isInGame(player)) return
@@ -45,6 +51,7 @@ object QueueManager : Ticking {
         if (!Configuration.queueEnabled) return
 
         queue.remove(player)
+        votes.remove(player.uniqueId)
         Cage.clear(player)
 
         if (Configuration.queueCheckIntervalSecs == -1)
@@ -59,40 +66,42 @@ object QueueManager : Ticking {
                 check()
         }
 
-        queue.forEach { it.sendActionBar(it.locale().component(
-            "queue.actionbar",
-            queue.size.toString(), Configuration.queueMinPlayers.toString(),
-            color = if (queue.size >= Configuration.queueMinPlayers) NamedTextColor.GREEN else NamedTextColor.RED
-        )) }
-
         queue.forEach { it.sendActionBar(MiniMessage.miniMessage().deserialize("<gradient:${if (queue.size >= Configuration.queueMinPlayers) GREEN_COLORS else RED_COLORS}:$phase>${it.locale().string("queue.actionbar", queue.size.toString(), Configuration.queueMinPlayers.toString())}</gradient>")) }
     }
+
+    private fun <T> List<T>.mostVoted(default: T): T = groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: default
 
     private fun check() {
         if (queue.size < Configuration.queueMinPlayers)
             return
 
         val players = MutableList(queue.size) { queue.removeFirst() }
-        val voted = players.mapNotNull { votes[it.uniqueId] }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
-        val mode = Registry.modes[voted] ?: Configuration.queueMode
+        val votesList = players.mapNotNull { votes[it.uniqueId] }
+
+        val modeName = votesList.mapNotNull { it.mode }.mostVoted(Configuration.queueMode.gameInfo.namespace)
+        val typeName = votesList.mapNotNull { it.type }.mostVoted("normal")
+        val itemTime = votesList.mapNotNull { it.time }.mostVoted(Configuration.queueDefaultTime)
 
         players.forEach { votes.remove(it.uniqueId) }
-        startGame(players, mode)
+        val mode = Registry.modes[modeName] ?: Configuration.queueMode
+
+        startGame(players, mode, typeName, itemTime)
     }
 
-    private fun startGame(players: List<Player>, mode: GameCompanion<*>) {
+    private fun startGame(players: List<Player>, mode: GameCompanion<*>, typeName: String, itemTime: Int) {
         Cage.clearAll(players)
+        Cage.clearTowers()
 
         val id = Game.generateId()
-        val map = mutableMapOf(
+        val placeholders = mutableMapOf(
             "id" to id,
             "mode" to mode.gameInfo.namespace,
             "players" to players.size,
         )
 
-        Configuration.queuePreCommands.forEach { PillarPeril.sendCommand(it(map)) }
+        Configuration.queuePreCommands.forEach { PillarPeril.sendCommand(it(placeholders)) }
 
-        val worldName = Configuration.queueWorldName(map)
+        val worldName = Configuration.queueWorldName(placeholders)
         val world = Bukkit.getWorld(worldName) ?: runCatching { org.bukkit.WorldCreator(worldName).createWorld() }
             .onFailure { PillarPeril.LOG.error("Could not create game world \"$worldName\".", it) }
             .getOrNull()
@@ -104,18 +113,22 @@ object QueueManager : Ticking {
             return
         }
 
-        val location = Configuration.queueLocation(world)
+        val arenaMap = MapManager.pickMap(players.size, world)
+        val location = arenaMap?.originLocation(world) ?: Configuration.queueLocation(world)
 
-        map += mapOf(
+        placeholders += mapOf(
             "world" to location.world.name,
             "x" to location.x,
             "y" to location.y,
             "z" to location.z,
         )
-        Configuration.queuePostCommands.forEach { PillarPeril.sendCommand(it(map)) }
+        Configuration.queuePostCommands.forEach { PillarPeril.sendCommand(it(placeholders)) }
 
-        // Actually start the game after doing like 20 other things:
-        // TODO: Supply list of modifiers here:
-        mode.constructGame(id, location, players, listOf()).init()
+        val game = mode.constructGame(id, location, players, listOf())
+        game.map = arenaMap
+        game.modifiers = listOfNotNull(Registry.modifiers[typeName]?.constructModifier(game))
+        game.customItemCountdown = { if (typeName == "speedrunner") 2L else itemTime.toLong() }
+
+        game.init()
     }
 }
