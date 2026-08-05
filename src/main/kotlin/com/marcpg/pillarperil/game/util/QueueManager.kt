@@ -93,7 +93,9 @@ object QueueManager : Ticking {
         Configuration.queuePreCommands.forEach { PillarPeril.sendCommand(it(map)) }
 
         val worldName = Configuration.queueWorldName(map)
-        val world = Bukkit.getWorld(worldName) ?: runCatching { org.bukkit.WorldCreator(worldName).createWorld() }.getOrNull()
+        val world = Bukkit.getWorld(worldName) ?: runCatching { org.bukkit.WorldCreator(worldName).createWorld() }
+            .onFailure { PillarPeril.LOG.error("Could not create game world \"$worldName\".", it) }
+            .getOrNull()
         if (world == null) {
             players.forEach {
                 it.sendMessage(component("Configured world \"$worldName\" does not exist, which means the game cannot start.", NamedTextColor.RED))

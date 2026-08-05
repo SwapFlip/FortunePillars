@@ -6,6 +6,7 @@ import com.marcpg.pillarperil.event.GameEvents
 import com.marcpg.pillarperil.event.PlayerEvents
 import com.marcpg.pillarperil.event.QueueEvents
 import com.marcpg.pillarperil.game.Game
+import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.GameManager
 import com.marcpg.pillarperil.util.Configuration
 import com.marcpg.pillarperil.util.Metrics
@@ -28,6 +29,7 @@ class PillarPeril : JavaPlugin() {
 
         Registry.load()
         Configuration.init()
+        Cage.ensureQueueWorld()?.let { LOG.info("Queue world \"${it.name}\" is ready.") }
         Metrics.start()
 
         server.pluginManager.registerEvents(GameEvents, this)

@@ -1,6 +1,7 @@
 package com.marcpg.pillarperil.game.util
 
 import com.marcpg.libpg.util.component
+import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.util.Configuration
 import net.kyori.adventure.text.format.NamedTextColor
@@ -8,6 +9,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.World
+import org.bukkit.WorldCreator
 import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -38,15 +40,26 @@ object Cage {
         giveLobbyItems(player)
     }
 
-    private fun resolveWorld(): World? {
+    fun ensureQueueWorld(): World? {
         val map = mapOf(
             "id" to Game.generateId(),
             "mode" to Configuration.queueMode.gameInfo.namespace,
             "players" to 1,
         )
         val name = Configuration.queueWorldName(map)
-        return Bukkit.getWorld(name) ?: runCatching { org.bukkit.WorldCreator(name).createWorld() }.getOrNull()
+        if ("{" in name) {
+            PillarPeril.LOG.info("Queue world \"$name\" uses placeholders, skipping pre-creation.")
+            return null
+        }
+
+        return Bukkit.getWorld(name) ?: runCatching {
+            WorldCreator(name).createWorld()
+        }.onFailure {
+            PillarPeril.LOG.error("Could not create queue world \"$name\".", it)
+        }.getOrNull()
     }
+
+    private fun resolveWorld(): World? = ensureQueueWorld()
 
     private fun buildTower(world: World, spot: Location, top: Int) {
         val x = spot.blockX
