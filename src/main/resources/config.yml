@@ -101,6 +101,11 @@ queue:
   # Set to -1 to start instantly as soon as `min-players` queued.
   check-interval: 5
 
+  # The countdown in seconds before a game automatically starts, once the queue reached `min-players`.
+  # Set to 0 to start instantly.
+  # Default: 60
+  start-delay: 60
+
   # How players enter or leave the queue.
   #   Available Methods:
   #     | -> command  : use '/queue' to enter the queue
@@ -198,6 +203,32 @@ items:
     - jigsaw
     - dragon_egg
     - ender_dragon_spawn_egg
+
+  # The weighted loot pool used by the "normal" game mode, inspired by CubeCraft's Pillars of Fortune.
+  # Every item gets a weight; the higher the weight, the more likely it drops.
+  # Unequally weighted loot makes rare/op items exciting while keeping common loot plentiful.
+  pool:
+    iron_sword: 15
+    iron_pickaxe: 15
+    iron_axe: 15
+    chainmail_chestplate: 10
+    leather_helmet: 10
+    snowball: 10
+    wooden_sword: 10
+    oak_planks: 10
+    cobblestone: 10
+    dirt: 8
+    stone: 8
+    cobweb: 5
+    lava_bucket: 4
+    golden_apple: 3
+    ender_pearl: 2
+    bow: 2
+    tnt: 2
+    diamond_sword: 1
+    diamond_helmet: 1
+    obsidian: 1
+    enchant_table: 1
 
 
 # Scoreboard #
@@ -385,15 +416,15 @@ modes:
 # The event type voted on in the queue. Tuning options for each type.
 modifiers:
 
-  # Lava Rises - Every item drop, the lava level rises by one block.
+  # Lava Rises - The lava level rises by one block every `interval` seconds, starting at `start-y`.
   lava-rises:
-    step: 1 # Blocks the lava rises per item drop.
-    start-below: 3 # How far below the arena the lava starts.
+    interval: 5 # Seconds between each lava level rise.
+    start-y: 32 # The y-coordinate the lava starts at and rises from.
 
-  # TNT Falls - TNT randomly falls onto the arena with a 10 second fuse.
+  # TNT Falls - TNT randomly falls onto the arena with a configurable fuse.
   tnt-falls:
     fuse-ticks: 200 # The fuse duration of the falling TNT (20 ticks = 1 second).
-    per-drop: 1 # Amount of TNT per item drop, multiplied by half the amount of players.
+    per-drop: 3 # Amount of TNT dropped per round, placed at random positions across the map.
 
   # Border Shrinks - The safe area shrinks every item drop; players outside take damage.
   border-shrinks:
@@ -410,4 +441,4 @@ disable-faststats: false
 
 # The Configuration Version #
 # DO NOT MODIFY THIS, OR THE CONFIGURATION WILL LIKELY BREAK OR BE RESET!
-version: 7
+version: 8

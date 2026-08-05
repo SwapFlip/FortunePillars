@@ -124,6 +124,8 @@ abstract class Game(
                             .replace("<player>", p.name())
                             .replace("<time>", timeLeft.oneUnitFormatted)
                             .replace("<kills>", p.kills.toString())
+                            .replace("<alive>", players.size.toString())
+                            .replace("<countdown>", itemCountdown.oneUnitFormatted)
                     )
                 }
             }.toTypedArray()
@@ -176,6 +178,7 @@ abstract class Game(
 
     open fun init() {
         world.setGameRuleSafe("DO_IMMEDIATE_RESPAWN", "IMMEDIATE_RESPAWN", true)
+        world.setGameRuleSafe("DO_MOB_SPAWNING", "TRUE", true)
 
         bukkitPlayers
             .map { PillarPlayer(it, this) }
@@ -213,7 +216,7 @@ abstract class Game(
             }
         }
 
-        items = Registry.MATERIAL.filter { it !in Configuration.itemsBlacklist && enabledCheck(it) && info.additionalFilter(it) }.toList()
+        items = buildItems(enabledCheck)
 
         radius = initialPlayers.size * Configuration.platformDistanceFactor / Math.TAU
 
@@ -237,6 +240,20 @@ abstract class Game(
 
         GameManager.add(this)
         info("Initialized the game.")
+    }
+
+    private fun buildItems(enabledCheck: (Material) -> Boolean): List<Material> {
+        val pool = Configuration.itemsPool
+        if (pool.isEmpty())
+            return Registry.MATERIAL.filter { it !in Configuration.itemsBlacklist && enabledCheck(it) && info.additionalFilter(it) }.toList()
+
+        return pool.flatMap { (name, weight) ->
+            val material = Material.matchMaterial(name)
+            if (material != null && material !in Configuration.itemsBlacklist && enabledCheck(material) && info.additionalFilter(material))
+                List(weight) { material }
+            else
+                emptyList()
+        }
     }
 
     private fun startOnMap(map: ArenaMap) {

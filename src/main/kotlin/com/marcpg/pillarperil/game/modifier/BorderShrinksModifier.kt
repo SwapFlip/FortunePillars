@@ -9,6 +9,7 @@ import com.marcpg.pillarperil.util.Configuration
 import com.marcpg.pillarperil.util.Ticking
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.title.Title
+import org.bukkit.Location
 import kotlin.math.hypot
 import kotlin.math.max
 
@@ -27,16 +28,27 @@ class BorderShrinksModifier(game: Game) : GameModifier(game) {
     private var centerX = 0.0
     private var centerZ = 0.0
     private var radius = 0.0
+    private var active = false
 
     override fun init() {
         val bounds = game.arenaBounds ?: return
+        val worldBorder = game.world.worldBorder
+
         centerX = (bounds.minX + bounds.maxX) / 2.0
         centerZ = (bounds.minZ + bounds.maxZ) / 2.0
         radius = max(hypot(bounds.maxX - centerX, bounds.maxZ - centerZ), hypot(bounds.minX - centerX, bounds.minZ - centerZ)) + 1
+
+        worldBorder.center = Location(game.world, centerX, 0.0, centerZ)
+        worldBorder.size = radius * 2
+        active = true
     }
 
     override fun onItemCycle() {
+        val worldBorder = game.world.worldBorder
+
         radius = max(minRadius.toDouble(), radius - step)
+        worldBorder.size = radius * 2
+
         game.players.forEach { p ->
             p.showTitle(Title.title(
                 component("Border Shrinks!", NamedTextColor.RED),
@@ -46,12 +58,19 @@ class BorderShrinksModifier(game: Game) : GameModifier(game) {
     }
 
     override fun tick(tick: Ticking.Tick) {
-        if (radius == 0.0 || !tick.isSecond(game.startingTick)) return
+        if (!active || !tick.isSecond(game.startingTick)) return
 
         game.players.forEach { p ->
             val location = p.player.location
             if (hypot(location.x - centerX, location.z - centerZ) > radius)
                 p.player.damage(1.0)
+        }
+    }
+
+    override fun onEnd() {
+        if (active) {
+            game.world.worldBorder.reset()
+            active = false
         }
     }
 }

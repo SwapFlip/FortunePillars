@@ -44,7 +44,7 @@ object SchematicSaver {
             .putInt("Width", width)
             .putInt("Height", height)
             .putInt("Length", length)
-            .putIntArray("Offset", intArrayOf(origin.x - minX, origin.y - minY, origin.z - minZ))
+            .putIntArray("Offset", intArrayOf(0, 0, 0))
             .put("Palette", paletteNbt)
             .putIntArray("BlockData", blocks)
             .put("Metadata", CompoundBinaryTag.empty())

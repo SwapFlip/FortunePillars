@@ -38,9 +38,9 @@ object MapPaster {
                         val x = index % schematic.width
                         val z = (index / schematic.width) % schematic.length
                         val y = index / area
-                        val wx = origin.x + x + schematic.offsetX
-                        val wy = origin.y + y + schematic.offsetY
-                        val wz = origin.z + z + schematic.offsetZ
+                        val wx = origin.x + x
+                        val wy = origin.y + y
+                        val wz = origin.z + z
                         world.getBlockAt(wx, wy, wz).setBlockData(data, false)
                         minX = min(minX, wx); minY = min(minY, wy); minZ = min(minZ, wz)
                         maxX = max(maxX, wx); maxY = max(maxY, wy); maxZ = max(maxZ, wz)

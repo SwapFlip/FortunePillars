@@ -6,6 +6,7 @@ import com.marcpg.pillarperil.game.GameModifierCompanion
 import com.marcpg.pillarperil.game.util.GameModifierInfo
 import com.marcpg.pillarperil.map.BlockPos
 import com.marcpg.pillarperil.util.Configuration
+import com.marcpg.pillarperil.util.Ticking
 import org.bukkit.Material
 
 class RisingLavaModifier(game: Game) : GameModifier(game) {
@@ -17,20 +18,22 @@ class RisingLavaModifier(game: Game) : GameModifier(game) {
 
     override val info: GameModifierInfo = modifierInfo
 
-    private val step = Configuration.provider.getInt("modifiers.lava-rises.step", 1)
-    private val startBelow = Configuration.provider.getInt("modifiers.lava-rises.start-below", 3)
+    private val intervalSecs = Configuration.provider.getInt("modifiers.lava-rises.interval", 5)
+    private val startY = Configuration.provider.getInt("modifiers.lava-rises.start-y", 32)
 
-    private var lavaY: Int = 0
+    private var lavaY: Int = startY
     private val placed = mutableListOf<BlockPos>()
 
     override fun init() {
-        lavaY = (game.arenaBounds?.minY ?: 0) - startBelow
+        lavaY = startY - 1
+        placed.clear()
     }
 
-    override fun onItemCycle() {
+    override fun tick(tick: Ticking.Tick) {
         val bounds = game.arenaBounds ?: return
+        if (!tick.isInInterval(game.startingTick, intervalSecs * 20)) return
 
-        lavaY += step
+        lavaY++
         if (lavaY > bounds.maxY) lavaY = bounds.maxY
 
         for (x in bounds.minX..bounds.maxX) {

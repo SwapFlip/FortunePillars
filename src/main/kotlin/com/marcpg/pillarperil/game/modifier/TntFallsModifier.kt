@@ -1,5 +1,6 @@
 package com.marcpg.pillarperil.game.modifier
 
+import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameModifier
 import com.marcpg.pillarperil.game.GameModifierCompanion
@@ -8,7 +9,6 @@ import com.marcpg.pillarperil.util.Configuration
 import org.bukkit.Location
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
-import kotlin.math.max
 
 class TntFallsModifier(game: Game) : GameModifier(game) {
     companion object : GameModifierCompanion<TntFallsModifier> {
@@ -20,7 +20,7 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
     override val info: GameModifierInfo = modifierInfo
 
     private val fuse = Configuration.provider.getInt("modifiers.tnt-falls.fuse-ticks", 200)
-    private val perDrop = Configuration.provider.getInt("modifiers.tnt-falls.per-drop", 1)
+    private val perDrop = Configuration.provider.getInt("modifiers.tnt-falls.per-drop", 3)
 
     private val spawned = mutableListOf<Entity>()
 
@@ -37,14 +37,17 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
     override fun onItemCycle() {
         val bounds = game.arenaBounds ?: return
 
-        val count = max(1, perDrop * (game.players.size / 2))
-        repeat(count) {
-            val x = (bounds.minX..bounds.maxX).random()
-            val z = (bounds.minZ..bounds.maxZ).random()
-            val location = Location(game.world, x + 0.5, (bounds.maxY + 15).toDouble(), z + 0.5)
-            val entity = game.world.spawnEntity(location, tntType)
-            runCatching { fuseSetter?.invoke(entity, fuse) }
-            spawned += entity
+        runCatching {
+            repeat(perDrop) {
+                val x = (bounds.minX..bounds.maxX).random()
+                val z = (bounds.minZ..bounds.maxZ).random()
+                val location = Location(game.world, x + 0.5, (bounds.maxY + 10).toDouble(), z + 0.5)
+                val entity = game.world.spawnEntity(location, tntType)
+                runCatching { fuseSetter?.invoke(entity, fuse) }
+                spawned += entity
+            }
+        }.onFailure {
+            PillarPeril.LOG.error("[TntFalls] Could not spawn raining TNT.", it)
         }
     }
 

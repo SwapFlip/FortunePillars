@@ -33,6 +33,8 @@ object QueueManager : Ticking {
 
     private var phase = 0.0
 
+    private var countdownStart = 0L
+
     private var arenaMap: ArenaMap? = null
     private var arenaBounds: MapBounds? = null
     private var lastArenaMap: String? = null
@@ -62,9 +64,6 @@ object QueueManager : Ticking {
         } else {
             Cage.lobby(player, queue.size - 1, queue.size)
         }
-
-        if (Configuration.queueCheckIntervalSecs == -1)
-            check()
     }
 
     fun remove(player: Player) {
@@ -74,19 +73,30 @@ object QueueManager : Ticking {
         votes.remove(player.uniqueId)
         Cage.clear(player)
 
-        if (Configuration.queueCheckIntervalSecs == -1)
-            check()
+        if (queue.size < Configuration.queueMinPlayers)
+            countdownStart = 0L
     }
 
     override fun tick(tick: Ticking.Tick) {
         if (!Configuration.queueEnabled) return
 
-        if (Configuration.queueCheckIntervalSecs >= 1) {
-            if (tick.isInInterval(0, Configuration.queueCheckInterval))
-                check()
-        }
+        if (queue.size >= Configuration.queueMinPlayers) {
+            if (countdownStart == 0L)
+                countdownStart = tick.number.toLong()
 
-        queue.forEach { it.sendActionBar(MiniMessage.miniMessage().deserialize("<gradient:${if (queue.size >= Configuration.queueMinPlayers) GREEN_COLORS else RED_COLORS}:$phase>${it.locale().string("queue.actionbar", queue.size.toString(), Configuration.queueMinPlayers.toString())}</gradient>")) }
+            val secondsLeft = (countdownStart + Configuration.queueStartDelay * 20L - tick.number.toLong()) / 20
+            if (secondsLeft <= 0) {
+                countdownStart = 0L
+                check()
+            } else {
+                queue.forEach {
+                    it.sendActionBar(MiniMessage.miniMessage().deserialize("<gradient:${GREEN_COLORS}:$phase>${it.locale().string("queue.countdown", secondsLeft.toString())}</gradient>"))
+                }
+            }
+        } else {
+            countdownStart = 0L
+            queue.forEach { it.sendActionBar(MiniMessage.miniMessage().deserialize("<gradient:${RED_COLORS}:$phase>${it.locale().string("queue.actionbar", queue.size.toString(), Configuration.queueMinPlayers.toString())}</gradient>")) }
+        }
     }
 
     private fun loadArena() {

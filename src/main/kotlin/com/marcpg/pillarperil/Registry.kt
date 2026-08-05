@@ -31,6 +31,8 @@ object Registry {
         BalancedGame,
         SwapperGame,
         ShuffleGame,
+        WeakGame,
+        OpGame,
     ).associateBy { it.gameInfo.namespace }
 
     val modifiers = listOf(

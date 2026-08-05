@@ -33,15 +33,17 @@ object QueueEvents : Listener {
 
     private val leaving = mutableSetOf<Player>()
 
-    private val modeOrder = listOf("normal", "balanced", "swapper", "shuffle")
+    private val modeOrder = listOf("weak", "normal", "balanced", "op", "shuffle", "swapper")
     private val typeOrder = listOf("normal", "lava-rises", "tnt-falls", "border-shrinks", "speedrunner")
     private val timeOrder = listOf(3, 5, 10, 15)
 
     private val modeMaterials = mapOf(
+        "weak" to Material.WOODEN_SWORD,
         "normal" to Material.DIAMOND_SWORD,
         "balanced" to Material.GOLDEN_APPLE,
-        "swapper" to Material.ENDER_PEARL,
+        "op" to Material.NETHERITE_SWORD,
         "shuffle" to Material.SHULKER_BOX,
+        "swapper" to Material.ENDER_PEARL,
     )
 
     private val typeMaterials = mapOf(

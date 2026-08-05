@@ -52,7 +52,14 @@ class PillarPlayer(player: Player, val game: Game) : PlayerMinecraftReceiver(pla
                 item = modifier.onItemReceive(item)
             }
 
-            player.inventory.addItem(item)
+            val offhand = player.inventory.itemInOffHand
+            if (offhand.type == Material.AIR && kotlin.random.Random.nextInt(5) == 0) {
+                player.inventory.setItemInOffHand(item)
+            } else {
+                player.inventory.addItem(item).values.forEach { leftover ->
+                    player.world.dropItemNaturally(player.location, leftover)
+                }
+            }
         }
         player.playSoundSafe(Sound.ENTITY_ITEM_PICKUP, 0.75f) { Configuration.soundEffectsItem }
     }
@@ -68,10 +75,7 @@ class PillarPlayer(player: Player, val game: Game) : PlayerMinecraftReceiver(pla
         player.closeInventory()
         player.inventory.clear()
         player.clearActivePotionEffects()
-        initialSnapshot.set(player, restoreGameMode = false, restoreLocation = false)
-
-        player.gameMode = Configuration.spawnGameMode
-        player.teleport(Configuration.getSpawnLocation(player.world))
+        initialSnapshot.set(player, restoreGameMode = true, restoreLocation = true)
 
         if (Configuration.queueMethod == QueueMethod.AUTO)
             bukkitRunLater(60L) { QueueManager.add(player) } // Wait 3 seconds before rejoining queue.

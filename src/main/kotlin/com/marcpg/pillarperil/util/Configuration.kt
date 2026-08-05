@@ -17,9 +17,10 @@ object Configuration : Config(PaperConfigProvider()) {
         ConfigVersion(id = 5),
         ConfigVersion(id = 6),
         ConfigVersion(id = 7),
+        ConfigVersion(id = 8),
     )
 
-    override val version: Int = 7
+    override val version: Int = 8
 
     var platformHeight by double("platform-height", 200.0)
     var platformMaterial by custom("platform-material", PPEntryTypes.minecraftRegistry(org.bukkit.Registry.MATERIAL), Material.BEDROCK)
@@ -37,6 +38,7 @@ object Configuration : Config(PaperConfigProvider()) {
     var queueMinPlayers by int("queue.min-players", 2)
     var queueMaxPlayers by int("queue.max-players", 8)
     var queueCheckIntervalSecs by int("queue.check-interval", 5)
+    var queueStartDelay by int("queue.start-delay", 60)
     var queueMethod by enum<QueueMethod>("queue.method", QueueMethod.COMMAND)
     var queueMode by custom("queue.mode", PPEntryTypes.registry { Registry.modes }, NormalGame)
     var queueWorldName by custom("queue.world", PPEntryTypes.placeholder, PlaceholderNameGetter("PillarPeril"))
@@ -73,7 +75,14 @@ object Configuration : Config(PaperConfigProvider()) {
 
     var disableFastStats by boolean("disable-faststats", false)
 
-    val deathHeight get() = platformHeight - maxFall
+    // The void death height. Players below this y-coordinate die.
+    val deathHeight get() = 0.0
+
+    // The weighted item pool: material name -> weight. A higher weight means a higher chance of getting the item.
+    // If the pool is empty, every non-blacklisted material is given an equal chance instead.
+    val itemsPool: Map<String, Int> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection("items.pool")?.getValues(false) ?: emptyMap())
+        .mapNotNull { (name, value) -> (value as? Int)?.takeIf { it > 0 }?.let { name to it } }
+        .toMap()
 
     fun getSpawnLocation(fallbackWorld: World): Location {
         val world = spawnWorld.value ?: fallbackWorld
