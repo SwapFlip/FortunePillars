@@ -407,14 +407,27 @@ object Commands {
                     if (name in MapManager.maps)
                         return send(sender, locale.component("map.already_exists", name, color = NamedTextColor.RED))
 
-                    val file = MapManager.schematicFile(name)
-                        ?: return send(sender, locale.component("map.no_schematic", name, color = NamedTextColor.RED))
-
                     val origin = BlockPos(sender.location.blockX, sender.location.blockY, sender.location.blockZ)
-                    val map = MapManager.create(name, file.name, sender.world.name, origin)
+                    val map = MapManager.create(name, sender.world.name, origin)
                         ?: return send(sender, locale.component("map.already_exists", name, color = NamedTextColor.RED))
 
                     send(sender, locale.component("map.setup.success", name, "${origin.x}/${origin.y}/${origin.z}", color = NamedTextColor.GREEN))
+                }
+                "save" -> {
+                    if (sender !is Player)
+                        return send(sender, component("Only players can save maps.", NamedTextColor.RED))
+
+                    val arenaMap = MapManager.maps[args.getOrNull(1)]
+                        ?: return send(sender, locale.component("map.not_existing", args.getOrNull(1) ?: "", color = NamedTextColor.RED))
+
+                    if (sender.world.name != arenaMap.world)
+                        return send(sender, locale.component("map.wrong_world", arenaMap.world, color = NamedTextColor.RED))
+
+                    val corner = BlockPos(sender.location.blockX, sender.location.blockY, sender.location.blockZ)
+                    val saved = MapManager.saveSchematic(arenaMap, sender.world, corner)
+                        ?: return send(sender, locale.component("map.save.failed", arenaMap.name, color = NamedTextColor.RED))
+
+                    send(sender, locale.component("map.save.success", arenaMap.name, saved.width.toString(), saved.height.toString(), saved.length.toString(), saved.blocks.toString(), color = NamedTextColor.GREEN))
                 }
                 "paste" -> {
                     val name = args.getOrNull(1) ?: return false
@@ -424,8 +437,9 @@ object Commands {
                     val world = Bukkit.getWorld(arenaMap.world)
                         ?: return send(sender, locale.component("map.world_not_loaded", arenaMap.world, color = NamedTextColor.RED))
 
-                    val file = MapManager.schematicFile(arenaMap.schematic)
-                        ?: return send(sender, locale.component("map.no_schematic", name, color = NamedTextColor.RED))
+                    val file = MapManager.schematicFile(name)
+                    if (!file.isFile)
+                        return send(sender, locale.component("map.no_schematic", name, color = NamedTextColor.RED))
 
                     val schematic = SchematicReader.read(file)
                         ?: return send(sender, locale.component("map.read_failed", name, color = NamedTextColor.RED))
@@ -498,9 +512,9 @@ object Commands {
                         ?: return send(sender, locale.component("map.not_existing", args.getOrNull(1) ?: "", color = NamedTextColor.RED))
 
                     sender.sendMessage(component("==== ", NamedTextColor.DARK_GRAY).append(component(arenaMap.name, NamedTextColor.GOLD)).append(component(" ====", NamedTextColor.DARK_GRAY)))
-                    sender.sendMessage(component("> Schematic: ", NamedTextColor.GRAY).append(component(arenaMap.schematic, NamedTextColor.WHITE)))
                     sender.sendMessage(component("> World: ", NamedTextColor.GRAY).append(component(arenaMap.world, NamedTextColor.WHITE)))
                     sender.sendMessage(component("> Origin: ", NamedTextColor.GRAY).append(component("${arenaMap.origin.x}/${arenaMap.origin.y}/${arenaMap.origin.z}", NamedTextColor.WHITE)))
+                    sender.sendMessage(component("> Saved Schematic: ", NamedTextColor.GRAY).append(component(if (MapManager.schematicFile(arenaMap.name).isFile) "yes" else "no - run /pp map save <name>", if (MapManager.schematicFile(arenaMap.name).isFile) NamedTextColor.GREEN else NamedTextColor.RED)))
                     arenaMap.spawns.forEachIndexed { i, s -> sender.sendMessage(component("> Spawn ${i + 1}: ", NamedTextColor.GRAY).append(component("${s.x}/${s.y}/${s.z}", NamedTextColor.WHITE))) }
                     sender.sendMessage(component("> Spectator: ", NamedTextColor.GRAY).append(component(arenaMap.spectatorSpawn?.let { "${it.x}/${it.y}/${it.z}" } ?: "-", NamedTextColor.WHITE)))
                     sender.sendMessage(component("> Death Height: ", NamedTextColor.GRAY).append(component(arenaMap.deathHeight?.toString() ?: "-", NamedTextColor.WHITE)))
@@ -525,8 +539,9 @@ object Commands {
                     send(sender, locale.component("map.reset.success", arenaMap.name, color = NamedTextColor.YELLOW))
                 }
                 else -> {
-                    sender.sendMessage(component("> /pp map setup <name> — register a schematic as a map.", NamedTextColor.GRAY))
-                    sender.sendMessage(component("> /pp map paste <name> — paste the map into its world for planning.", NamedTextColor.GRAY))
+                    sender.sendMessage(component("> /pp map setup <name> — register the area around your position as a map.", NamedTextColor.GRAY))
+                    sender.sendMessage(component("> /pp map save <name> — snapshot the area from the map's origin to your position as the arena.", NamedTextColor.GRAY))
+                    sender.sendMessage(component("> /pp map paste <name> — re-paste the saved arena for planning.", NamedTextColor.GRAY))
                     sender.sendMessage(component("> /pp map set spawn <n> <name> — set spawn n at your position.", NamedTextColor.GRAY))
                     sender.sendMessage(component("> /pp map set spectatorspawn <name> — set the spectator camera spot.", NamedTextColor.GRAY))
                     sender.sendMessage(component("> /pp map set deathheight <name> — set the void kill height.", NamedTextColor.GRAY))
@@ -538,9 +553,9 @@ object Commands {
 
         override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): MutableList<String> {
             return when (args.size) {
-                1 -> listOf("setup", "paste", "set", "list", "info", "delete", "reset").filter { it.startsWith(args[0]) }.toMutableList()
+                1 -> listOf("setup", "save", "paste", "set", "list", "info", "delete", "reset").filter { it.startsWith(args[0]) }.toMutableList()
                 2 -> when (args[0]) {
-                    "paste", "info", "delete", "reset" -> MapManager.maps.keys.filter { it.startsWith(args[1]) }.toMutableList()
+                    "save", "paste", "info", "delete", "reset" -> MapManager.maps.keys.filter { it.startsWith(args[1]) }.toMutableList()
                     "set" -> listOf("spawn", "spectatorspawn", "deathheight").filter { it.startsWith(args[1]) }.toMutableList()
                     else -> mutableListOf()
                 }

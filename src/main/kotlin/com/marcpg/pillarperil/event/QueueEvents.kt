@@ -4,6 +4,7 @@ import com.marcpg.libpg.lang.string
 import com.marcpg.libpg.util.bukkitRunLater
 import com.marcpg.libpg.util.component
 import com.marcpg.libpg.util.locale
+import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.QueueManager
 import com.marcpg.pillarperil.util.Configuration
 import net.kyori.adventure.text.Component
@@ -13,6 +14,11 @@ import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockBurnEvent
+import org.bukkit.event.block.BlockExplodeEvent
+import org.bukkit.event.block.BlockPlaceEvent
+import org.bukkit.event.entity.EntityExplodeEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
@@ -103,6 +109,32 @@ object QueueEvents : Listener {
     @EventHandler
     fun onDrop(event: PlayerDropItemEvent) {
         if (event.player in QueueManager.queue) event.isCancelled = true
+    }
+
+    @EventHandler
+    fun onBlockBreak(event: BlockBreakEvent) {
+        if (event.player in QueueManager.queue || Cage.isProtected(event.block))
+            event.isCancelled = true
+    }
+
+    @EventHandler
+    fun onBlockPlace(event: BlockPlaceEvent) {
+        if (event.player in QueueManager.queue) event.isCancelled = true
+    }
+
+    @EventHandler
+    fun onBlockBurn(event: BlockBurnEvent) {
+        if (Cage.isProtected(event.block)) event.isCancelled = true
+    }
+
+    @EventHandler
+    fun onBlockExplode(event: BlockExplodeEvent) {
+        event.blockList().removeAll { Cage.isProtected(it) }
+    }
+
+    @EventHandler
+    fun onEntityExplode(event: EntityExplodeEvent) {
+        event.blockList().removeAll { Cage.isProtected(it) }
     }
 
     private fun openVoteMenu(player: Player) {

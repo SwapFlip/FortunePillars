@@ -37,7 +37,7 @@ object Cage {
 
         val top = Configuration.platformHeight.toInt()
         towers[player.uniqueId] = buildTower(world, spot, top)
-        val feet = Location(world, spot.x, top + 2.0, spot.z)
+        val feet = Location(world, spot.x + 0.5, top + 2.0, spot.z + 0.5)
         player.teleport(feet)
         place(player, feet)
         giveLobbyItems(player)
@@ -90,6 +90,37 @@ object Cage {
         cages.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
         cages[player.uniqueId] = buildCage(feet).toMutableList()
     }
+
+    fun arena(player: Player, feet: Location) {
+        cages.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
+        val placed = buildArenaCage(feet)
+        cages[player.uniqueId] = placed.toMutableList()
+        player.teleport(feet)
+        giveLobbyItems(player)
+    }
+
+    private fun buildArenaCage(feet: Location): List<Block> {
+        val origin = feet.block
+
+        val placed = mutableListOf<Block>()
+        for (x in (origin.x - 1)..(origin.x + 1)) {
+            for (z in (origin.z - 1)..(origin.z + 1)) {
+                for (y in origin.y..(origin.y + 3)) {
+                    val isWall = x == origin.x - 1 || x == origin.x + 1 || z == origin.z - 1 || z == origin.z + 1
+                    val isCeiling = y == origin.y + 3
+                    if (!isWall && !isCeiling) continue
+
+                    val block = origin.world.getBlockAt(x, y, z)
+                    placed.add(block)
+                    block.type = Material.GLASS
+                }
+            }
+        }
+        return placed
+    }
+
+    fun isProtected(block: Block): Boolean =
+        block in cages.values.flatten() || block in towers.values.flatten() || block in gameCages
 
     private fun buildCage(feet: Location): List<Block> {
         val origin = feet.block

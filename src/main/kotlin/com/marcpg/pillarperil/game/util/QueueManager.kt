@@ -6,12 +6,17 @@ import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.Registry
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameCompanion
+import com.marcpg.pillarperil.map.ArenaMap
+import com.marcpg.pillarperil.map.MapBounds
 import com.marcpg.pillarperil.map.MapManager
+import com.marcpg.pillarperil.map.MapPaster
+import com.marcpg.pillarperil.map.SchematicReader
 import com.marcpg.pillarperil.util.Configuration
 import com.marcpg.pillarperil.util.Ticking
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.Bukkit
+import org.bukkit.Material
 import org.bukkit.World
 import org.bukkit.entity.Player
 import java.util.UUID
@@ -28,6 +33,10 @@ object QueueManager : Ticking {
 
     private var phase = 0.0
 
+    private var arenaMap: ArenaMap? = null
+    private var arenaBounds: MapBounds? = null
+    private var lastArenaMap: String? = null
+
     fun recordVote(player: Player, mode: String? = null, type: String? = null, time: Int? = null) {
         val previous = votes[player.uniqueId] ?: Vote()
         votes[player.uniqueId] = Vote(mode ?: previous.mode, type ?: previous.type, time ?: previous.time)
@@ -40,8 +49,19 @@ object QueueManager : Ticking {
     fun add(player: Player) {
         if (!Configuration.queueEnabled || player in queue || GameManager.isInGame(player)) return
 
+        if (queue.isEmpty())
+            loadArena()
+
         queue.addLast(player)
-        Cage.lobby(player, queue.size - 1, queue.size)
+
+        val map = arenaMap
+        val world = Cage.ensureQueueWorld()
+        if (map != null && world != null && map.spawns.isNotEmpty()) {
+            val spawn = map.spawns[(queue.size - 1) % map.spawns.size]
+            Cage.arena(player, spawn.toLocation(world))
+        } else {
+            Cage.lobby(player, queue.size - 1, queue.size)
+        }
 
         if (Configuration.queueCheckIntervalSecs == -1)
             check()
@@ -67,6 +87,44 @@ object QueueManager : Ticking {
         }
 
         queue.forEach { it.sendActionBar(MiniMessage.miniMessage().deserialize("<gradient:${if (queue.size >= Configuration.queueMinPlayers) GREEN_COLORS else RED_COLORS}:$phase>${it.locale().string("queue.actionbar", queue.size.toString(), Configuration.queueMinPlayers.toString())}</gradient>")) }
+    }
+
+    private fun loadArena() {
+        val world = Cage.ensureQueueWorld() ?: return
+        val map = MapManager.pickMap(Configuration.queueMinPlayers, world)
+        arenaMap = map
+        arenaBounds = null
+
+        if (map == null) {
+            lastArenaMap = null
+            return
+        }
+
+        val schematic = SchematicReader.read(MapManager.schematicFile(map.name))
+        if (schematic == null) {
+            arenaMap = null
+            lastArenaMap = null
+            PillarPeril.LOG.warn("[Queue] No saved schematic for map \"${map.name}\", falling back to the default lobby.")
+            return
+        }
+
+        if (lastArenaMap != map.name)
+            arenaBounds?.let { clearArea(world, it) }
+
+        lastArenaMap = map.name
+        arenaBounds = MapPaster.paste(schematic, world, map.origin)
+    }
+
+    private fun clearArea(world: World, bounds: MapBounds) {
+        for (x in bounds.minX..bounds.maxX) {
+            for (y in bounds.minY..bounds.maxY) {
+                for (z in bounds.minZ..bounds.maxZ) {
+                    val block = world.getBlockAt(x, y, z)
+                    if (block.type != Material.AIR)
+                        block.type = Material.AIR
+                }
+            }
+        }
     }
 
     private fun <T> List<T>.mostVoted(default: T): T = groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: default
@@ -113,8 +171,8 @@ object QueueManager : Ticking {
             return
         }
 
-        val arenaMap = MapManager.pickMap(players.size, world)
-        val location = arenaMap?.originLocation(world) ?: Configuration.queueLocation(world)
+        val map = arenaMap
+        val location = map?.originLocation(world) ?: Configuration.queueLocation(world)
 
         placeholders += mapOf(
             "world" to location.world.name,
@@ -125,7 +183,8 @@ object QueueManager : Ticking {
         Configuration.queuePostCommands.forEach { PillarPeril.sendCommand(it(placeholders)) }
 
         val game = mode.constructGame(id, location, players, listOf())
-        game.map = arenaMap
+        game.map = map
+        game.arenaBounds = arenaBounds
         game.modifiers = listOfNotNull(Registry.modifiers[typeName]?.constructModifier(game))
         game.customItemCountdown = { if (typeName == "speedrunner") 2L else itemTime.toLong() }
 

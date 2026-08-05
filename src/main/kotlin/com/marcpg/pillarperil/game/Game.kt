@@ -222,10 +222,11 @@ abstract class Game(
         buildings = Buildings(this, info.horGen().constructGen(this), info.vertGen().constructGen(this))
 
         val map = this.map
-        if (map != null)
-            startOnMap(map)
-        else
-            buildAndTeleport()
+        when {
+            map != null && arenaBounds != null -> info("Playing on pre-pasted arena map \"${map.name}\".")
+            map != null -> startOnMap(map)
+            else -> buildAndTeleport()
+        }
 
         modifiers.forEach { it.customBuild() }
 

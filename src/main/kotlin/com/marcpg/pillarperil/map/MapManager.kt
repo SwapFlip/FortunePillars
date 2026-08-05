@@ -8,7 +8,6 @@ import java.io.File
 
 object MapManager {
     private val folder: File get() = File(PillarPeril.PLUGIN.dataFolder, "maps")
-    private val schematicFolder: File get() = File(PillarPeril.PLUGIN.dataFolder, "schematics")
 
     val maps = mutableMapOf<String, ArenaMap>()
 
@@ -52,9 +51,9 @@ object MapManager {
         yaml.save(File(folder, "${map.name}.yml"))
     }
 
-    fun create(name: String, schematic: String, world: String, origin: BlockPos): ArenaMap? {
+    fun create(name: String, world: String, origin: BlockPos): ArenaMap? {
         if (name in maps) return null
-        val map = ArenaMap(name, schematic, world, origin)
+        val map = ArenaMap(name, "$name.schem", world, origin)
         maps[name] = map
         save(map)
         return map
@@ -63,13 +62,13 @@ object MapManager {
     fun delete(name: String) {
         maps.remove(name)
         File(folder, "$name.yml").delete()
+        File(folder, "$name.schem").delete()
     }
 
-    fun schematicFile(name: String): File? {
-        schematicFolder.mkdirs()
-        return listOf(File(schematicFolder, "$name.schem"), File(schematicFolder, "$name.schematic"))
-            .firstOrNull { it.isFile }
-    }
+    fun schematicFile(name: String): File = File(folder, "$name.schem")
+
+    fun saveSchematic(map: ArenaMap, world: World, corner: BlockPos): SavedSchematic? =
+        SchematicSaver.save(world, map.origin, corner, schematicFile(map.name))
 
     fun pickMap(playerCount: Int, world: World): ArenaMap? {
         val pool = if (Configuration.queueMapPool.isEmpty())

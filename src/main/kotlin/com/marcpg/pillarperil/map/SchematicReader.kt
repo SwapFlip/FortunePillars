@@ -1,6 +1,8 @@
 package com.marcpg.pillarperil.map
 
 import net.kyori.adventure.nbt.BinaryTagIO
+import net.kyori.adventure.nbt.ByteArrayBinaryTag
+import net.kyori.adventure.nbt.IntArrayBinaryTag
 import net.kyori.adventure.nbt.IntBinaryTag
 import java.io.File
 
@@ -34,9 +36,9 @@ object SchematicReader {
         val palette = MutableList((paletteEntries.maxOfOrNull { it.first } ?: -1) + 1) { "" }
         paletteEntries.forEach { (id, state) -> palette[id] = state }
 
-        val blocks = when {
-            nbt.contains("BlockData") -> nbt.getByteArray("BlockData").map { it.toInt() and 0xFF }.toIntArray()
-            nbt.contains("Blocks") -> nbt.getIntArray("Blocks")
+        val blocks = when (val tag = nbt.get("BlockData")) {
+            is ByteArrayBinaryTag -> tag.value().map { it.toInt() and 0xFF }.toIntArray()
+            is IntArrayBinaryTag -> tag.value()
             else -> IntArray(0)
         }
 
