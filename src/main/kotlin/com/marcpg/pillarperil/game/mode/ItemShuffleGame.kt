@@ -4,6 +4,7 @@ import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameCompanion
 import com.marcpg.pillarperil.game.GameModifier
 import com.marcpg.pillarperil.game.util.GameInfo
+import com.marcpg.pillarperil.player.PillarPlayer
 import org.bukkit.Location
 import org.bukkit.entity.Player
 
@@ -25,7 +26,9 @@ class ItemShuffleGame(id: String, center: Location, bukkitPlayers: List<Player>,
                 p.giveItems(items, differentItems = 9)
             }
         }
-
-        players.forEach { it.giveItems(items) }
     }
+
+    // The shuffle give is handled entirely by the item event above; the default give would
+    // hand out a 10th item on top of the 9 shuffled ones.
+    override fun addItem(player: PillarPlayer) {}
 }

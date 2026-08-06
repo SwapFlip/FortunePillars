@@ -15,14 +15,13 @@ import com.marcpg.pillarperil.map.SchematicReader
 import com.marcpg.pillarperil.util.Configuration
 import com.marcpg.pillarperil.util.Ticking
 import com.marcpg.pillarperil.util.playSoundSafe
-import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.minimessage.MiniMessage
-import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.Sound
 import org.bukkit.World
+import org.bukkit.entity.Item
 import org.bukkit.entity.Player
 import java.util.UUID
 
@@ -38,6 +37,9 @@ object QueueManager : Ticking {
     val queue = ArrayDeque<Player>()
 
     private val votes = mutableMapOf<UUID, Vote>()
+
+    // Pre-game state captured when a player joins the queue, consumed when their game starts.
+    private val joinSnapshots = mutableMapOf<UUID, com.marcpg.pillarperil.player.PlayerSnapshot>()
 
     private var phase = 0.0
 
@@ -72,6 +74,10 @@ object QueueManager : Ticking {
             .sortedBy { it.name }
     }
 
+    // Returns the state the player had before joining the queue, removing it from the pending storage.
+    fun consumeJoinSnapshot(player: Player): com.marcpg.pillarperil.player.PlayerSnapshot? =
+        joinSnapshots.remove(player.uniqueId)
+
     fun recordVote(player: Player, mode: String? = null, type: String? = null, time: Int? = null, map: String? = null) {
         val previous = votes[player.uniqueId] ?: Vote()
         votes[player.uniqueId] = Vote(mode ?: previous.mode, type ?: previous.type, time ?: previous.time, map ?: previous.map)
@@ -82,11 +88,25 @@ object QueueManager : Ticking {
     fun timeVoteCounts(): Map<Int, Int> = votes.values.mapNotNull { it.time }.groupingBy { it }.eachCount()
     fun mapVoteCounts(): Map<String, Int> = votes.values.mapNotNull { it.map }.groupingBy { it }.eachCount()
 
-    fun add(player: Player) {
+    fun add(player: Player, preferredMap: ArenaMap? = null) {
         if (!Configuration.queueEnabled || player in queue || GameManager.isInGame(player)) return
 
-        if (queue.isEmpty())
-            loadArena()
+        // Capture the player's state before they get caged, so they can be restored to this spot after the game.
+        joinSnapshots[player.uniqueId] = com.marcpg.pillarperil.player.PlayerSnapshot(player)
+
+        if (queue.isEmpty()) {
+            if (preferredMap == null || !pasteMap(preferredMap))
+                loadArena()
+        } else if (preferredMap != null && preferredMap != arenaMap && preferredMap.spawns.size >= queue.size && pasteMap(preferredMap)) {
+            // A new player picked a different map: swap the shared arena and re-place everyone already queued.
+            val world = Cage.ensureQueueWorld()
+            if (world != null) {
+                queue.forEachIndexed { i, p ->
+                    val spawn = preferredMap.spawns.getOrNull(i) ?: preferredMap.origin
+                    Cage.arena(p, spawn.toLocation(world))
+                }
+            }
+        }
 
         queue.addLast(player)
 
@@ -112,6 +132,7 @@ object QueueManager : Ticking {
 
         queue.remove(player)
         votes.remove(player.uniqueId)
+        joinSnapshots.remove(player.uniqueId)
         Cage.clear(player)
 
         if (queue.size < Configuration.queueMinPlayers) {
@@ -147,10 +168,7 @@ object QueueManager : Ticking {
 
                 if (secondsLeft in ANNOUNCE_SECONDS) {
                     queue.forEach { p ->
-                        p.showTitle(Title.title(
-                            p.locale().component("queue.countdown", secondsLeft.toString(), color = NamedTextColor.GOLD),
-                            Component.empty()
-                        ))
+                        p.sendActionBar(p.locale().component("queue.countdown", secondsLeft.toString(), color = NamedTextColor.GOLD))
                     }
                     queue.forEach { it.playSoundSafe(Sound.UI_BUTTON_CLICK, 1.0f, if (secondsLeft <= 5) 1.0f else 1.5f) }
                 }
@@ -186,6 +204,29 @@ object QueueManager : Ticking {
         if (lastArenaMap != map.name)
             arenaBounds?.let { clearArea(world, it) }
 
+        // Wipe the entire arena before pasting: the schematic's own volume plus the play area around
+        // the spectator spawn (where lava, water, obsidian, TNT and dropped items can appear), from
+        // below the world up - so nothing from a previous game ever survives the map reload.
+        val margin = 8
+        val playSize = maxOf(
+            Configuration.provider.getInt("modifiers.lava-rises.size", 50),
+            Configuration.provider.getInt("modifiers.tnt-falls.size", 50),
+        )
+        val half = playSize / 2
+        val spectator = map.spectatorSpawn
+        val centerX = spectator?.x ?: map.origin.x
+        val centerZ = spectator?.z ?: map.origin.z
+        val bounds = MapBounds(
+            minOf(map.origin.x, centerX - half) - margin,
+            world.minHeight,
+            minOf(map.origin.z, centerZ - half) - margin,
+            maxOf(map.origin.x + schematic.width, centerX + half) + margin,
+            world.maxHeight - 1,
+            maxOf(map.origin.z + schematic.length, centerZ + half) + margin,
+        )
+        clearArea(world, bounds)
+        clearEntities(world, bounds)
+
         lastArenaMap = map.name
         arenaMap = map
         arenaBounds = MapPaster.paste(schematic, world, map.origin)
@@ -204,6 +245,18 @@ object QueueManager : Ticking {
         }
     }
 
+    // Removes leftover dropped items and TNT inside the wiped area, so a previous game's entities
+    // can't survive the map reload either.
+    private fun clearEntities(world: World, bounds: MapBounds) {
+        world.getEntities().forEach { entity ->
+            val loc = entity.location
+            if (loc.blockX !in bounds.minX..bounds.maxX || loc.blockY !in bounds.minY..bounds.maxY || loc.blockZ !in bounds.minZ..bounds.maxZ)
+                return@forEach
+            if (entity is Item || entity.type.name == "PRIMED_TNT" || entity.type.name == "TNT")
+                entity.remove()
+        }
+    }
+
     // Picks the most voted option; ties are broken randomly instead of always being won by the first option.
     private fun <T> List<T>.mostVoted(default: T): T {
         val counts = groupingBy { it }.eachCount()
@@ -211,8 +264,17 @@ object QueueManager : Ticking {
         return counts.filterValues { it == max }.keys.random()
     }
 
-    private fun check() {
-        if (queue.size < Configuration.queueMinPlayers)
+    // Starts the game immediately with everyone currently queued, no matter the player count.
+    fun forceStart() {
+        if (queue.isEmpty()) return
+
+        countdownStart = 0L
+        countdownDelay = 0
+        check(force = true)
+    }
+
+    private fun check(force: Boolean = false) {
+        if (!force && queue.size < Configuration.queueMinPlayers)
             return
 
         val players = MutableList(queue.size) { queue.removeFirst() }

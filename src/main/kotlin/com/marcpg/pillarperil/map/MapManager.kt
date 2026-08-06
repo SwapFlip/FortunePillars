@@ -5,6 +5,8 @@ import com.marcpg.pillarperil.util.Configuration
 import org.bukkit.World
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
+import kotlin.math.max
+import kotlin.math.min
 
 object MapManager {
     private val folder: File get() = File(PillarPeril.PLUGIN.dataFolder, "maps")
@@ -72,8 +74,18 @@ object MapManager {
 
     fun schematicFile(name: String): File = File(folder, "$name.schem")
 
-    fun saveSchematic(map: ArenaMap, world: World, corner: BlockPos): SavedSchematic? =
-        SchematicSaver.save(world, map.origin, corner, schematicFile(map.name))
+    // Saves the schematic between the two selected corners and re-anchors the map's origin to the selection's
+    // min corner. The paste anchor then always matches the schematic's local (0,0,0), so the arena is never offset.
+    fun saveSchematic(map: ArenaMap, world: World, first: BlockPos, second: BlockPos): SavedSchematic? {
+        val origin = BlockPos(
+            min(first.x, second.x),
+            min(first.y, second.y),
+            min(first.z, second.z),
+        )
+        map.origin = origin
+        save(map)
+        return SchematicSaver.save(world, first, second, schematicFile(map.name))
+    }
 
     fun pickMap(playerCount: Int, world: World, exclude: String? = null): ArenaMap? {
         val pool = if (Configuration.queueMapPool.isEmpty())

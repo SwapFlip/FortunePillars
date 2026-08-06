@@ -5,6 +5,7 @@ import com.marcpg.pillarperil.game.GameCompanion
 import com.marcpg.pillarperil.game.GameModifier
 import com.marcpg.pillarperil.game.util.GameInfo
 import org.bukkit.Location
+import org.bukkit.Material
 import org.bukkit.Registry
 import org.bukkit.entity.Player
 
@@ -19,7 +20,7 @@ class ChaosGame(id: String, center: Location, bukkitPlayers: List<Player>, modif
 
     override val info: GameInfo = gameInfo
 
-    init {
-        items = Registry.MATERIAL.toList()
-    }
+    // Every material in the game is possible, regardless of the configured item pool.
+    // (Overridden here instead of in the constructor, since Game.init() rebuilds the item list.)
+    override fun buildItems(enabledCheck: (Material) -> Boolean): List<Material> = Registry.MATERIAL.toList()
 }

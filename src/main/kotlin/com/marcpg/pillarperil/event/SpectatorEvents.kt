@@ -1,6 +1,9 @@
 package com.marcpg.pillarperil.event
 
+import com.marcpg.libpg.lang.string
 import com.marcpg.libpg.util.component
+import com.marcpg.libpg.util.locale
+import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.util.GameManager
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
@@ -19,7 +22,7 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.SkullMeta
 
 object SpectatorEvents : Listener {
-    private const val TELEPORT_TITLE = "Spectate a player"
+    private fun menuTitle(player: Player): Component = Component.text(player.locale().string("spectator.menu.title"))
 
     @EventHandler
     fun onInteract(event: PlayerInteractEvent) {
@@ -45,17 +48,17 @@ object SpectatorEvents : Listener {
 
     @EventHandler
     fun onInventoryClick(event: InventoryClickEvent) {
-        if (event.view.title() != Component.text(TELEPORT_TITLE)) return
+        val player = event.whoClicked as? Player ?: return
+        if (event.view.title() != menuTitle(player)) return
         event.isCancelled = true
 
-        val player = event.whoClicked as? Player ?: return
         val target = (event.currentItem?.itemMeta as? SkullMeta)?.owningPlayer ?: return
         player.teleport(Bukkit.getPlayer(target.uniqueId) ?: return)
         player.closeInventory()
     }
 
-    private fun openTeleportMenu(player: Player, game: com.marcpg.pillarperil.game.Game) {
-        val inv = Bukkit.createInventory(null, 27, Component.text(TELEPORT_TITLE))
+    private fun openTeleportMenu(player: Player, game: Game) {
+        val inv = Bukkit.createInventory(null, 27, menuTitle(player))
         game.players.forEachIndexed { i, p ->
             if (i >= 27) return@forEachIndexed
 

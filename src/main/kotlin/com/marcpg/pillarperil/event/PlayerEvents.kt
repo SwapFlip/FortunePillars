@@ -68,8 +68,9 @@ object PlayerEvents : Listener {
 
     @EventHandler(ignoreCancelled = true)
     fun onPlayerMove(event: PlayerMoveEvent) {
-        if (event.to.y < Configuration.deathHeight) {
-            GameManager.player(event.player) ?: return
+        val pillar = GameManager.player(event.player) ?: return
+        // Respect the map's own death height when set, falling back to the global configuration.
+        if (event.to.y < pillar.game.deathHeight) {
             event.player.health = 0.0
         }
     }

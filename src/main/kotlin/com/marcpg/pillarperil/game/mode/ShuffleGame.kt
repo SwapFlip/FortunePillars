@@ -23,29 +23,36 @@ class ShuffleGame(id: String, center: Location, bukkitPlayers: List<Player>, mod
     override val info: GameInfo = gameInfo
 
     init {
-        addTickEvent(Time(50, Time.Unit.SECONDS)) {
-            val alive = players.toList()
+        // Countdown and shuffle are driven by the same event, so the warning always matches the
+        // shuffle instead of two independently-clocked intervals drifting apart over time.
+        addTickEvent(Time(60, Time.Unit.SECONDS)) {
+            val current = players.toList()
+            if (current.isEmpty()) return@addTickEvent
+
             repeat(10) { i ->
                 val remaining = 10 - i
                 bukkitRunLater(i * 20L) {
-                    if (ending || players.isEmpty()) return@bukkitRunLater
-                    alive.forEach { p ->
+                    if (gameEnded()) return@bukkitRunLater
+                    current.forEach { p ->
                         if (p.player.isOnline)
                             p.player.sendActionBar(component("Inventory shuffling in $remaining...", NamedTextColor.AQUA))
                     }
                 }
             }
-        }
 
-        addTickEvent(Time(60, Time.Unit.SECONDS)) {
-            players.forEach { p ->
-                val inv = p.player.inventory
-                val items = (0 until 36).map { inv.getItem(it) }.shuffled()
-                for (slot in 0 until 36)
-                    inv.setItem(slot, items[slot])
-                if (p.player.isOnline)
-                    p.player.sendActionBar(component("Inventory shuffled!", NamedTextColor.GREEN))
+            bukkitRunLater(10 * 20L) {
+                if (gameEnded() || players.isEmpty()) return@bukkitRunLater
+                players.forEach { p ->
+                    val inv = p.player.inventory
+                    val items = (0 until 36).map { inv.getItem(it) }.shuffled()
+                    for (slot in 0 until 36)
+                        inv.setItem(slot, items[slot])
+                    if (p.player.isOnline)
+                        p.player.sendActionBar(component("Inventory shuffled!", NamedTextColor.GREEN))
+                }
             }
         }
     }
+
+    private fun gameEnded() = ending || players.isEmpty()
 }

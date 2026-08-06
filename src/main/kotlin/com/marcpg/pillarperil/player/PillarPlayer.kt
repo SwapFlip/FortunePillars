@@ -17,7 +17,7 @@ import org.bukkit.Sound
 import org.bukkit.entity.Player
 import java.util.UUID
 
-class PillarPlayer(player: Player, val game: Game) : PlayerMinecraftReceiver(player) {
+class PillarPlayer(player: Player, val game: Game, initialSnapshot: PlayerSnapshot? = null) : PlayerMinecraftReceiver(player) {
     companion object {
         private val rareItems = setOf(
             Material.NETHERITE_SWORD, Material.NETHERITE_AXE, Material.NETHERITE_PICKAXE,
@@ -38,7 +38,9 @@ class PillarPlayer(player: Player, val game: Game) : PlayerMinecraftReceiver(pla
     var lastDamagedBy: UUID? = null
     var lastDamageTick: Int = Int.MIN_VALUE
 
-    val initialSnapshot = PlayerSnapshot(player)
+    // Snapshot taken before the player entered the queue (captured at queue join) so they get restored to
+    // where they actually were before playing. Falls back to a fresh snapshot for non-queue games.
+    val initialSnapshot = initialSnapshot ?: PlayerSnapshot(player)
 
     init {
         if (game.info.showScoreboard()) {
@@ -71,22 +73,18 @@ class PillarPlayer(player: Player, val game: Game) : PlayerMinecraftReceiver(pla
                 playSoundSafe(Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 2.0f)
             }
 
-            val offhand = player.inventory.itemInOffHand
-            if (offhand.type == Material.AIR && kotlin.random.Random.nextInt(5) == 0) {
-                player.inventory.setItemInOffHand(item)
-            } else if (Configuration.avoidHeldSlot) {
-                val contents = player.inventory.contents
-                val heldSlot = player.inventory.heldItemSlot
-                val freeSlots = contents.indices.filter { it != heldSlot && (contents[it]?.type ?: Material.AIR) == Material.AIR }
-                if (freeSlots.isEmpty()) {
-                    player.world.dropItemNaturally(player.location, item)
-                } else {
-                    player.inventory.setItem(freeSlots.random(), item)
-                }
+            // Items always land in the next available main inventory slot — never the offhand or armor.
+            // `storageContents` is used instead of `contents`, since the latter can also include the
+            // armor and offhand slots on player inventories.
+            val contents = player.inventory.storageContents
+            val heldSlot = player.inventory.heldItemSlot
+            val nextSlot = contents.indices.firstOrNull { i ->
+                (i != heldSlot || !Configuration.avoidHeldSlot) && (contents[i]?.type ?: Material.AIR) == Material.AIR
+            }
+            if (nextSlot != null) {
+                player.inventory.setItem(nextSlot, item)
             } else {
-                player.inventory.addItem(item).values.forEach { leftover ->
-                    player.world.dropItemNaturally(player.location, leftover)
-                }
+                player.world.dropItemNaturally(player.location, item)
             }
         }
         player.playSoundSafe(Sound.ENTITY_ITEM_PICKUP, 0.75f) { Configuration.soundEffectsItem }

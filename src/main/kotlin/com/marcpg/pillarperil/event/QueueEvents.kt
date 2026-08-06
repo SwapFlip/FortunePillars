@@ -8,6 +8,7 @@ import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.QueueManager
 import com.marcpg.pillarperil.map.ArenaMap
+import com.marcpg.pillarperil.map.MapManager
 import com.marcpg.pillarperil.util.Configuration
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
@@ -41,7 +42,7 @@ object QueueEvents : Listener {
     private val leaving = mutableSetOf<Player>()
 
     private val modeOrder = listOf("weak", "normal", "balanced", "op", "shuffle", "swapper")
-    private val typeOrder = listOf("normal", "lava-rises", "tnt-falls", "border-shrinks", "speedrunner")
+    private val typeOrder = listOf("normal", "lava-rises", "tnt-falls", "speedrunner")
     private val timeOrder = listOf(3, 5, 10, 15)
 
     private val modeMaterials = mapOf(
@@ -57,7 +58,6 @@ object QueueEvents : Listener {
         "normal" to Material.GREEN_WOOL,
         "lava-rises" to Material.LAVA_BUCKET,
         "tnt-falls" to Material.TNT,
-        "border-shrinks" to Material.BARRIER,
         "speedrunner" to Material.FEATHER,
     )
 
@@ -102,11 +102,16 @@ object QueueEvents : Listener {
     fun onInventoryClick(event: InventoryClickEvent) {
         val title = event.view.title()
         val player = event.whoClicked as? Player ?: return
-        event.isCancelled = true
 
         when (title) {
-            Component.text(VOTE_TITLE) -> onVoteClick(player, event)
-            Component.text(MAP_TITLE) -> onMapClick(player, event)
+            Component.text(VOTE_TITLE) -> {
+                event.isCancelled = true
+                onVoteClick(player, event)
+            }
+            Component.text(MAP_TITLE) -> {
+                event.isCancelled = true
+                onMapClick(player, event)
+            }
         }
     }
 
@@ -129,8 +134,13 @@ object QueueEvents : Listener {
         val item = event.currentItem ?: return
         if (item.type !in setOf(Material.SLIME_BALL, Material.FIRE_CHARGE)) return
 
-        val map = item.itemMeta?.persistentDataContainer?.get(MAP_KEY, PersistentDataType.STRING) ?: return
-        QueueManager.recordVote(player, map = map)
+        val name = item.itemMeta?.persistentDataContainer?.get(MAP_KEY, PersistentDataType.STRING) ?: return
+        val map = MapManager.maps[name] ?: return
+        QueueManager.recordVote(player, map = name)
+        if (player !in QueueManager.queue) {
+            QueueManager.add(player, map)
+            player.sendMessage(player.locale().component("queue.join.success", color = NamedTextColor.GREEN))
+        }
         player.playSound(player, Sound.UI_BUTTON_CLICK, 1.0f, 1.5f)
         player.closeInventory()
     }
@@ -166,9 +176,9 @@ object QueueEvents : Listener {
         event.blockList().removeAll { Cage.isProtected(it) }
     }
 
-    fun openMapMenu(player: Player) {
+    fun openMapMenu(player: Player): Boolean {
         val maps = QueueManager.mapVoteCandidates()
-        if (maps.isEmpty()) return
+        if (maps.isEmpty()) return false
 
         val inv = Bukkit.createInventory(null, 27, Component.text(MAP_TITLE))
         border(inv, 27)
@@ -177,10 +187,12 @@ object QueueEvents : Listener {
         maps.forEachIndexed { i, map ->
             if (i >= 7) return@forEachIndexed
             val votes = QueueManager.mapVoteCounts()[map.name] ?: 0
-            val isLeader = map.name == leader
+            // Only mark the leader green if it actually has votes; otherwise every map stays grey.
+            val isLeader = votes > 0 && map.name == leader
             inv.setItem(10 + i, mapItem(map, votes, isLeader))
         }
         player.openInventory(inv)
+        return true
     }
 
     private fun openVoteMenu(player: Player) {

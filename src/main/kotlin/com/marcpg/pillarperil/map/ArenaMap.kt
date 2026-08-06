@@ -11,7 +11,7 @@ class ArenaMap(
     val name: String,
     val schematic: String,
     val world: String,
-    val origin: BlockPos,
+    var origin: BlockPos,
     val spawns: MutableList<BlockPos> = mutableListOf(),
     var spectatorSpawn: BlockPos? = null,
     var deathHeight: Int? = null,

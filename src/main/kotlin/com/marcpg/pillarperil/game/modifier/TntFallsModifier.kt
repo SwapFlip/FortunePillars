@@ -23,6 +23,7 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
 
     private val fuse = Configuration.provider.getInt("modifiers.tnt-falls.fuse-ticks", 200)
     private val perDrop = Configuration.provider.getInt("modifiers.tnt-falls.per-drop", 3)
+    private val size = Configuration.provider.getInt("modifiers.tnt-falls.size", 50)
 
     private val spawned = mutableListOf<Entity>()
 
@@ -37,15 +38,15 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
     }
 
     override fun onItemCycle() {
-        val bounds = game.arenaBounds ?: return
+        val playArea = game.playArea(size) ?: return
 
         game.players.playSoundSafe(Sound.ENTITY_TNT_PRIMED, 1.0f, 1.2f)
 
         runCatching {
             repeat(perDrop) {
-                val x = (bounds.minX..bounds.maxX).random()
-                val z = (bounds.minZ..bounds.maxZ).random()
-                val location = Location(game.world, x + 0.5, (bounds.maxY + 10).toDouble(), z + 0.5)
+                val x = (playArea.minX..playArea.maxX).random()
+                val z = (playArea.minZ..playArea.maxZ).random()
+                val location = Location(game.world, x + 0.5, (game.world.maxHeight - 1).toDouble(), z + 0.5)
                 val entity = game.world.spawnEntity(location, tntType)
                 runCatching { fuseSetter?.invoke(entity, fuse) }
                 spawned += entity

@@ -39,7 +39,6 @@ object Registry {
         NormalModifier,
         RisingLavaModifier,
         TntFallsModifier,
-        BorderShrinksModifier,
         SpeedrunnerModifier,
     ).associateBy { it.modifierInfo.namespace }
 

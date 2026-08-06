@@ -15,9 +15,11 @@ data class SavedSchematic(
 )
 
 object SchematicSaver {
-    fun save(world: World, origin: BlockPos, corner: BlockPos, file: File): SavedSchematic? = runCatching {
-        val minX = min(origin.x, corner.x); val minY = min(origin.y, corner.y); val minZ = min(origin.z, corner.z)
-        val maxX = max(origin.x, corner.x); val maxY = max(origin.y, corner.y); val maxZ = max(origin.z, corner.z)
+    // Saves the schematic between the two given corners. The schematic's local (0,0,0) is the min corner,
+    // so pasting at that position always puts the arena exactly where the selection was made.
+    fun save(world: World, first: BlockPos, second: BlockPos, file: File): SavedSchematic? = runCatching {
+        val minX = min(first.x, second.x); val minY = min(first.y, second.y); val minZ = min(first.z, second.z)
+        val maxX = max(first.x, second.x); val maxY = max(first.y, second.y); val maxZ = max(first.z, second.z)
         val width = maxX - minX + 1
         val height = maxY - minY + 1
         val length = maxZ - minZ + 1

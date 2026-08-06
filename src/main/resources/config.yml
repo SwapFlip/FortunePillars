@@ -437,19 +437,15 @@ modifiers:
   # Lava Rises - The lava level rises by one block every `interval` seconds, starting at `start-y`.
   lava-rises:
     interval: 5 # Seconds between each lava level rise.
-    start-y: 32 # The y-coordinate the lava starts at and rises from.
+    start-y: 30 # The y-coordinate the lava starts at and rises from.
     start-delay: 60 # Seconds after the game starts before the lava begins to rise.
+    size: 50 # Size of the square play area, centered on the map's spectator spawn, that the lava covers.
 
-  # TNT Falls - TNT randomly falls onto the arena with a configurable fuse.
+  # TNT Falls - TNT randomly falls onto the play area with a configurable fuse.
   tnt-falls:
     fuse-ticks: 200 # The fuse duration of the falling TNT (20 ticks = 1 second).
-    per-drop: 3 # Amount of TNT dropped per round, placed at random positions across the map.
-
-  # Border Shrinks - The safe area shrinks every item drop; players outside take damage.
-  border-shrinks:
-    step: 4 # Blocks the safe radius shrinks per item drop.
-    min-radius: 5 # The smallest the safe radius can get.
-    damage: 1.0 # Damage dealt per second to players outside of the safe radius.
+    per-drop: 3 # Amount of TNT dropped per round, placed at random positions within the play area.
+    size: 50 # Size of the square play area, centered on the map's spectator spawn, that the TNT falls into. TNT spawns from the world's height limit.
 
 
 # End of Game #

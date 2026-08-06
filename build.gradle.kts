@@ -40,6 +40,7 @@ dependencies {
     compileOnly(kotlin("stdlib"))
     compileOnly(libs.paper.api)
     compileOnly("com.mojang:brigadier:1.0.18")
+    compileOnly("me.clip:placeholderapi:2.11.6")
 
     implementation(files("libs/ktlibpg-full-${libs.versions.ktlibpg.get()}.jar"))
     implementation(files("libs/adventure-nbt-4.26.1.jar"))

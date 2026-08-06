@@ -8,7 +8,6 @@ import com.marcpg.libpg.util.locale
 import com.marcpg.libpg.util.miniMessage
 import com.marcpg.pillarperil.event.QueueEvents
 import com.marcpg.pillarperil.game.Game
-import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.GameManager
 import com.marcpg.pillarperil.game.util.QueueManager
 import com.marcpg.pillarperil.map.BlockPos
@@ -27,6 +26,7 @@ import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 import org.bukkit.command.TabCompleter
 import org.bukkit.entity.Player
+import java.util.UUID
 
 object Commands {
     internal interface PluginCommand : CommandExecutor, TabCompleter
@@ -200,9 +200,12 @@ object Commands {
                     if (sender in QueueManager.queue)
                         return send(sender, locale.component("queue.join.already", color = NamedTextColor.YELLOW))
 
-                    QueueManager.add(sender)
-                    QueueEvents.openMapMenu(sender)
-                    send(sender, locale.component("queue.join.success", color = NamedTextColor.GREEN))
+                    // Pick the arena before joining: the map menu places the player into the queue on selection.
+                    if (!QueueEvents.openMapMenu(sender)) {
+                        QueueManager.add(sender)
+                        send(sender, locale.component("queue.join.success", color = NamedTextColor.GREEN))
+                    }
+                    true
                 }
                 "leave" -> {
                     if (sender !is Player || Configuration.queueMethod != QueueMethod.COMMAND)
@@ -250,8 +253,7 @@ object Commands {
                             if (QueueManager.queue.isEmpty())
                                 return send(sender, locale.component("queue.clear.empty", color = NamedTextColor.YELLOW))
 
-                            QueueManager.queue.clear()
-                            QueueManager.queue.toList().forEach { Cage.clear(it) }
+                            QueueManager.queue.toList().forEach { QueueManager.remove(it) }
                             send(sender, locale.component("queue.clear.success", color = NamedTextColor.YELLOW))
                         }
                         else -> false
@@ -393,6 +395,9 @@ object Commands {
     // ======================== PP ROOT ========================
 
     internal val map: PluginCommand = object : PluginCommand {
+        // First corner of a pending schematic selection, waiting for the second one.
+        private val schematicSelections = mutableMapOf<UUID, BlockPos>()
+
         override fun onCommand(sender: CommandSender, command: Command, label: String, rawArgs: Array<out String>): Boolean {
             val args = rawArgs.toList()
             val locale = sender.locale()
@@ -425,8 +430,16 @@ object Commands {
                     if (sender.world.name != arenaMap.world)
                         return send(sender, locale.component("map.wrong_world", arenaMap.world, color = NamedTextColor.RED))
 
-                    val corner = BlockPos(sender.location.blockX, sender.location.blockY, sender.location.blockZ)
-                    val saved = MapManager.saveSchematic(arenaMap, sender.world, corner)
+                    // Two-step selection: run the command at one corner, then walk to the opposite corner and run it again.
+                    val first = schematicSelections[sender.uniqueId]
+                    if (first == null) {
+                        schematicSelections[sender.uniqueId] = BlockPos(sender.location.blockX, sender.location.blockY, sender.location.blockZ)
+                        return send(sender, locale.component("map.save.first", "${sender.location.blockX}/${sender.location.blockY}/${sender.location.blockZ}", color = NamedTextColor.YELLOW))
+                    }
+
+                    schematicSelections.remove(sender.uniqueId)
+                    val second = BlockPos(sender.location.blockX, sender.location.blockY, sender.location.blockZ)
+                    val saved = MapManager.saveSchematic(arenaMap, sender.world, first, second)
                         ?: return send(sender, locale.component("map.save.failed", arenaMap.name, color = NamedTextColor.RED))
 
                     send(sender, locale.component("map.save.success", arenaMap.name, saved.width.toString(), saved.height.toString(), saved.length.toString(), saved.blocks.toString(), color = NamedTextColor.GREEN))
@@ -542,7 +555,7 @@ object Commands {
                 }
                 else -> {
                     sender.sendMessage(component("> /pp map setup <name> — register the area around your position as a map.", NamedTextColor.GRAY))
-                    sender.sendMessage(component("> /pp map save <name> — snapshot the area from the map's origin to your position as the arena.", NamedTextColor.GRAY))
+                    sender.sendMessage(component("> /pp map save <name> — select the arena with 2 corners: run the command at one corner, then at the opposite one.", NamedTextColor.GRAY))
                     sender.sendMessage(component("> /pp map paste <name> — re-paste the saved arena for planning.", NamedTextColor.GRAY))
                     sender.sendMessage(component("> /pp map set spawn <n> <name> — set spawn n at your position.", NamedTextColor.GRAY))
                     sender.sendMessage(component("> /pp map set spectatorspawn <name> — set the spectator camera spot.", NamedTextColor.GRAY))
@@ -571,7 +584,19 @@ object Commands {
     internal val pp: PluginCommand = object : PluginCommand {
         override fun onCommand(sender: CommandSender, command: Command, label: String, rawArgs: Array<out String>): Boolean {
             val args = rawArgs.toList()
+            val locale = sender.locale()
             return when (args.firstOrNull()) {
+                "forcestart" -> {
+                    if (!sender.isOp && !sender.hasPermission("pillarperil.forcestart"))
+                        return noPermission(sender)
+
+                    if (QueueManager.queue.isEmpty())
+                        return send(sender, locale.component("queue.forcestart.empty", color = NamedTextColor.RED))
+
+                    val count = QueueManager.queue.size
+                    QueueManager.forceStart()
+                    send(sender, locale.component("queue.forcestart.success", count.toString(), color = NamedTextColor.GREEN))
+                }
                 "game" -> game.onCommand(sender, command, label, args.drop(1).toTypedArray())
                 "queue" -> queue.onCommand(sender, command, label, args.drop(1).toTypedArray())
                 "map" -> map.onCommand(sender, command, label, args.drop(1).toTypedArray())
@@ -582,7 +607,7 @@ object Commands {
 
         override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): MutableList<String> {
             return when (args.size) {
-                1 -> listOf("game", "queue", "map", "config").filter { it.startsWith(args[0]) }.toMutableList()
+                1 -> listOf("forcestart", "game", "queue", "map", "config").filter { it.startsWith(args[0]) }.toMutableList()
                 else -> when (args.firstOrNull()) {
                     "game" -> game.onTabComplete(sender, command, alias, args.drop(1).toTypedArray()) ?: mutableListOf()
                     "queue" -> queue.onTabComplete(sender, command, alias, args.drop(1).toTypedArray()) ?: mutableListOf()

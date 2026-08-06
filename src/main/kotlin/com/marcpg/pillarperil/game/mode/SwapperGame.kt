@@ -25,33 +25,36 @@ class SwapperGame(id: String, center: Location, bukkitPlayers: List<Player>, mod
     override val info: GameInfo = gameInfo
 
     init {
-        addTickEvent(Time(25, Time.Unit.SECONDS)) {
-            val alive = players.toList()
+        // Countdown and swap are driven by the same event, so the warning always matches the swap
+        // instead of two independently-clocked intervals drifting apart over time.
+        addTickEvent(Time(30, Time.Unit.SECONDS)) {
+            val current = players.toList()
+            if (current.size < 2) return@addTickEvent
+
             repeat(5) { i ->
                 val remaining = 5 - i
                 bukkitRunLater(i * 20L) {
                     if (gameEnded()) return@bukkitRunLater
-                    alive.forEach { p ->
+                    current.forEach { p ->
                         if (p.player.isOnline)
                             p.player.sendActionBar(component("Swapping in $remaining...", NamedTextColor.GOLD))
                     }
                 }
             }
-        }
 
-        addTickEvent(Time(30, Time.Unit.SECONDS)) {
-            val alive = players.shuffled()
-            if (alive.size < 2) return@addTickEvent
+            bukkitRunLater(5 * 20L) {
+                if (gameEnded() || current.size < 2) return@bukkitRunLater
+                val alive = players.shuffled()
+                alive.forEach { p ->
+                    if (p.player.isOnline)
+                        p.player.sendActionBar(component("Swapping!", NamedTextColor.GREEN))
+                }
 
-            alive.forEach { p ->
-                if (p.player.isOnline)
-                    p.player.sendActionBar(component("Swapping!", NamedTextColor.GREEN))
+                val temp: Location = alive.first().location().clone()
+                for (i in 0..<alive.size - 1)
+                    alive[i].teleport(alive[i + 1].location())
+                alive.last().teleport(temp)
             }
-
-            val temp: Location = alive.first().location().clone()
-            for (i in 0..<alive.size - 1)
-                alive[i].teleport(alive[i + 1].location())
-            alive.last().teleport(temp)
         }
     }
 

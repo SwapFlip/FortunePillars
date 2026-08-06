@@ -25,3 +25,17 @@ website: https://github.com/MarcPG1905/PillarPeril
 
 ### Logging Prefix ###
 prefix: PP
+
+### Soft Dependencies ###
+dependencies:
+  server:
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+      join-classpath: true
+
+### Permissions ###
+permissions:
+  pillarperil.forcestart:
+    description: Allows force starting a Pillar Peril game.
+    default: op

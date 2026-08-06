@@ -55,7 +55,6 @@ abstract class Game(
         private val itemTimeColor = listOf(TextColor.color(0x0022FF), TextColor.color(0x3399FF))
 
         fun getColor(left: Float): BossBar.Color = when {
-            left < 0.2 -> BossBar.Color.RED
             left < 0.4 -> BossBar.Color.RED
             left < 0.6 -> BossBar.Color.YELLOW
             left < 0.8 -> BossBar.Color.GREEN
@@ -88,6 +87,33 @@ abstract class Game(
     var map: ArenaMap? = null
     var arenaBounds: MapBounds? = null
     var customItemCountdown: (() -> Long)? = null
+
+    // The play area is a square centered on the map's spectator spawn (projected onto the pasted
+    // arena in the game world), which is where the actual gameplay happens. Games without a pasted
+    // arena fall back to a square around the game's center, so hazards like lava still work.
+    fun playArea(size: Int): MapBounds {
+        val bounds = arenaBounds
+        if (bounds != null) {
+            val map = map
+            val half = size / 2
+            val spectator = map?.spectatorSpawn
+            val centerX: Int
+            val centerZ: Int
+            if (map != null && spectator != null) {
+                centerX = bounds.minX + spectator.x - map.origin.x
+                centerZ = bounds.minZ + spectator.z - map.origin.z
+            } else {
+                centerX = (bounds.minX + bounds.maxX) / 2
+                centerZ = (bounds.minZ + bounds.maxZ) / 2
+            }
+            return MapBounds(centerX - half, bounds.minY, centerZ - half, centerX + half, bounds.maxY, centerZ + half)
+        }
+
+        val half = size / 2
+        val cx = center.blockX
+        val cz = center.blockZ
+        return MapBounds(cx - half, center.blockY - half, cz - half, cx + half, center.blockY + half, cz + half)
+    }
 
     // ==================== GAME STATE ====================
 
@@ -155,10 +181,11 @@ abstract class Game(
     }
 
     open val actionBar: ((PillarPlayer) -> SimpleActionBar)? = { p -> GradientActionBar(p, 5, 0.1) {
-        if (itemCountdown.get() == 0L)
-            p.locale().component("actionbar.now") to itemNowColor
-        else
-            p.locale().component("actionbar.time", itemCountdown.preciselyFormatted) to itemTimeColor
+        when {
+            itemCountdown.get() in 1..3 -> p.locale().component("game.start.countdown", itemCountdown.get().toString(), color = NamedTextColor.GRAY) to itemTimeColor
+            itemCountdown.get() == 0L -> p.locale().component("actionbar.now") to itemNowColor
+            else -> p.locale().component("actionbar.time", itemCountdown.preciselyFormatted) to itemTimeColor
+        }
     } }
 
     open val bossBarCreator: () -> SimpleBossBar = { SimpleBossBar(target(false),
@@ -184,7 +211,7 @@ abstract class Game(
         world.setGameRuleSafe("DO_MOB_SPAWNING", "TRUE", true)
 
         bukkitPlayers
-            .map { PillarPlayer(it, this) }
+            .map { PillarPlayer(it, this, QueueManager.consumeJoinSnapshot(it)) }
             .onEach {
                 QueueManager.remove(it.player)
 
@@ -248,7 +275,7 @@ abstract class Game(
         info("Initialized the game.")
     }
 
-    private fun buildItems(enabledCheck: (Material) -> Boolean): List<Material> {
+    protected open fun buildItems(enabledCheck: (Material) -> Boolean): List<Material> {
         val pool = Configuration.itemsPool
         if (pool.isEmpty())
             return Registry.MATERIAL.filter { it !in Configuration.itemsBlacklist && enabledCheck(it) && info.additionalFilter(it) }.toList()
@@ -354,15 +381,22 @@ abstract class Game(
                 }
             }
 
+            // If the game ended (either here or by another cause like timeout), end()'s cleanup already
+            // restores every player - so skip the spectator teleport, which would otherwise override it
+            // and leave the deciding player stranded in the game world.
+            if (ending) return@bukkitRunLater
+            val bukkitPlayer = player.player
+            if (!bukkitPlayer.isOnline || !bukkitPlayer.isValid) return@bukkitRunLater
+
             if (Configuration.respawnAtConfig) {
-                player.player.gameMode = Configuration.spawnGameMode
-                player.player.teleport(Configuration.getSpawnLocation(player.player.world))
+                bukkitPlayer.gameMode = Configuration.spawnGameMode
+                bukkitPlayer.teleport(Configuration.getSpawnLocation(bukkitPlayer.world))
             } else {
-                player.player.gameMode = GameMode.SPECTATOR
-                player.player.teleport(map?.spectatorLocation(world) ?: center)
-                player.player.inventory.setItem(8, ItemStack(Material.COMPASS).apply {
+                bukkitPlayer.gameMode = GameMode.SPECTATOR
+                bukkitPlayer.teleport(map?.spectatorLocation(world) ?: center)
+                bukkitPlayer.inventory.setItem(8, ItemStack(Material.COMPASS).apply {
                     val meta = itemMeta
-                    meta.displayName(player.locale().component("spectator.menu.title", NamedTextColor.AQUA))
+                    meta.displayName(bukkitPlayer.locale().component("spectator.menu.title", NamedTextColor.AQUA))
                     itemMeta = meta
                 })
             }
@@ -396,14 +430,6 @@ abstract class Game(
                 players.forEach { addItem(it) }
                 itemCountdown.set(itemCountdown())
             } else {
-                if (countdown <= 3)
-                    players.forEach { p ->
-                        p.showTitle(Title.title(
-                            component(countdown.toString(), NamedTextColor.YELLOW).decorate(TextDecoration.BOLD),
-                            p.locale().component("game.start.countdown", countdown.toString(), color = NamedTextColor.GRAY)
-                        ))
-                    }
-
                 players.playSoundSafe(Sound.UI_BUTTON_CLICK, 0.2f, 2.0f) {
                     itemCountdown.get() <= Configuration.soundEffectsCooldown
                 }
@@ -421,14 +447,20 @@ abstract class Game(
     }
 
     // Removes dropped items that have been on the ground for more than 30 seconds, to keep long games
-    // from accumulating lag. The cleanup only touches items that were dropped during this game's arena.
+    // from accumulating lag. Only runs on pasted arena maps, since without bounds there is no way to
+    // tell which items belong to this game, and sweeping the whole world would wipe unrelated drops.
     private fun removeDroppedItems() {
-        val bounds = arenaBounds
+        val bounds = arenaBounds ?: return
+        sweepArenaItems(bounds, minTicksLived = 30 * 20)
+    }
+
+    // Removes dropped items inside the given area, so nothing is left littering the arena.
+    private fun sweepArenaItems(bounds: MapBounds, minTicksLived: Int) {
         world.getEntities().filterIsInstance<Item>().forEach { item ->
-            if (item.ticksLived < 30 * 20) return@forEach
-            if (bounds != null && (item.location.x < bounds.minX || item.location.x > bounds.maxX ||
+            if (item.ticksLived < minTicksLived) return@forEach
+            if (item.location.x < bounds.minX || item.location.x > bounds.maxX ||
                     item.location.y < bounds.minY || item.location.y > bounds.maxY ||
-                    item.location.z < bounds.minZ || item.location.z > bounds.maxZ)) return@forEach
+                    item.location.z < bounds.minZ || item.location.z > bounds.maxZ) return@forEach
             item.remove()
         }
     }
@@ -478,8 +510,7 @@ abstract class Game(
         for (p in initialPlayers) {
             val pl = p.player
             if (!pl.isOnline) continue
-            pl.gameMode = Configuration.spawnGameMode
-            pl.teleport(Configuration.getSpawnLocation(pl.world))
+            pl.closeInventory()
         }
 
         Configuration.endingCommands.forEach { PillarPeril.sendCommand(it(
@@ -493,6 +524,14 @@ abstract class Game(
             "z" to center.z,
         )) }
         cleanup()
+
+        // Always send players back to the main server world after a game, never the game world.
+        // Runs after the cleanup so the snapshot restore can't override it.
+        initialPlayers.forEach {
+            val pl = it.player
+            if (pl.isOnline)
+                pl.teleport(Configuration.getSpawnLocation(Bukkit.getWorlds().first()))
+        }
     }
 
     private fun cleanup() {
@@ -501,5 +540,7 @@ abstract class Game(
         buildings.reset()
         bossBar?.stop()
         modifiers.forEach { it.onEnd() }
+        // Sweep any dropped items left in the arena, so the map is clean for the next round.
+        sweepArenaItems(arenaBounds ?: playArea(60), minTicksLived = 0)
     }
 }

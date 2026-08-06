@@ -12,6 +12,7 @@ import com.marcpg.pillarperil.game.util.GameManager
 import com.marcpg.pillarperil.map.MapManager
 import com.marcpg.pillarperil.util.Configuration
 import com.marcpg.pillarperil.util.Metrics
+import com.marcpg.pillarperil.util.PillarPerilExpansion
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 import java.util.Locale
@@ -34,6 +35,12 @@ class PillarPeril : JavaPlugin() {
         MapManager.load()
         Cage.ensureQueueWorld()?.let { LOG.info("Queue world \"${it.name}\" is ready.") }
         Metrics.start()
+
+        if (server.pluginManager.isPluginEnabled("PlaceholderAPI")) {
+            runCatching { me.clip.placeholderapi.PlaceholderAPI.registerExpansion(PillarPerilExpansion()) }
+                .onSuccess { LOG.info("Registered PlaceholderAPI expansion (pp).") }
+                .onFailure { LOG.warn("Could not register the PlaceholderAPI expansion.", it) }
+        }
 
         server.pluginManager.registerEvents(GameEvents, this)
         server.pluginManager.registerEvents(PlayerEvents, this)
