@@ -31,6 +31,10 @@ class PlayerShuffleGame(id: String, center: Location, bukkitPlayers: List<Player
                 players[i].teleport(players[i + 1].location())
             }
             players.last().teleport(temp)
+
+            // Clear the invulnerability that teleporting grants, so shuffled players can be hit
+            // again immediately.
+            players.forEach { p -> p.player.noDamageTicks = 0 }
         }
     }
 }

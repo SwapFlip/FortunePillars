@@ -3,6 +3,7 @@ package com.marcpg.pillarperil.game.mode
 import com.marcpg.libpg.data.time.Time
 import com.marcpg.libpg.util.bukkitRunLater
 import com.marcpg.libpg.util.component
+import com.marcpg.libpg.util.locale
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameCompanion
 import com.marcpg.pillarperil.game.GameModifier
@@ -24,18 +25,21 @@ class ShuffleGame(id: String, center: Location, bukkitPlayers: List<Player>, mod
 
     init {
         // Countdown and shuffle are driven by the same event, so the warning always matches the
-        // shuffle instead of two independently-clocked intervals drifting apart over time.
+        // shuffle instead of two independently-clocked intervals drifting apart over time. Each
+        // cycle the previous random items are removed and 10 fresh ones are handed out, so the
+        // inventory never accumulates stale items across reshuffles.
         addTickEvent(Time(60, Time.Unit.SECONDS)) {
-            val current = players.toList()
-            if (current.isEmpty()) return@addTickEvent
+            // Live list, not a snapshot: eliminated players must not keep receiving warning
+            // action bars after they became spectators.
+            if (players.isEmpty()) return@addTickEvent
 
             repeat(10) { i ->
                 val remaining = 10 - i
                 bukkitRunLater(i * 20L) {
                     if (gameEnded()) return@bukkitRunLater
-                    current.forEach { p ->
+                    players.forEach { p ->
                         if (p.player.isOnline)
-                            p.player.sendActionBar(component("Inventory shuffling in $remaining...", NamedTextColor.AQUA))
+                            p.player.sendActionBar(p.locale().component("game.shuffle.countdown", remaining.toString(), color = NamedTextColor.AQUA))
                     }
                 }
             }
@@ -43,12 +47,13 @@ class ShuffleGame(id: String, center: Location, bukkitPlayers: List<Player>, mod
             bukkitRunLater(10 * 20L) {
                 if (gameEnded() || players.isEmpty()) return@bukkitRunLater
                 players.forEach { p ->
-                    val inv = p.player.inventory
-                    val items = (0 until 36).map { inv.getItem(it) }.shuffled()
-                    for (slot in 0 until 36)
-                        inv.setItem(slot, items[slot])
-                    if (p.player.isOnline)
-                        p.player.sendActionBar(component("Inventory shuffled!", NamedTextColor.GREEN))
+                    val pl = p.player
+                    // The old random items are removed and 10 fresh ones are handed out; anything put
+                    // into the offhand survives the reshuffle.
+                    p.clearKeepOffhand()
+                    p.giveItems(items, differentItems = 10)
+                    if (pl.isOnline)
+                        pl.sendActionBar(p.locale().component("game.shuffle.now", color = NamedTextColor.GREEN))
                 }
             }
         }

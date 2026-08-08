@@ -23,10 +23,11 @@ class RisingLavaModifier(game: Game) : GameModifier(game) {
 
     override val info: GameModifierInfo = modifierInfo
 
-    private val intervalSecs = Configuration.provider.getInt("modifiers.lava-rises.interval", 5)
+    private val intervalSecs = Configuration.provider.getInt("modifiers.lava-rises.interval", 3)
     private val startDelaySecs = Configuration.provider.getInt("modifiers.lava-rises.start-delay", 60)
     private val startY = Configuration.provider.getInt("modifiers.lava-rises.start-y", 30)
-    private val size = Configuration.provider.getInt("modifiers.lava-rises.size", 50)
+    private val spectatorOffset = Configuration.provider.getInt("modifiers.lava-rises.spectator-offset", 34)
+    private val size = Configuration.provider.getInt("modifiers.lava-rises.size", 100)
 
     private var lavaY: Int = 0
     private var hasWarned = false
@@ -35,14 +36,17 @@ class RisingLavaModifier(game: Game) : GameModifier(game) {
     override fun init() {
         // The lava rises from a fixed height below the map, covering the play area that is defined
         // by the spectator spawn. The pasted arena bounds are never used, since they would flood
-        // the player spawns at the top of the arena.
-        lavaY = startY - 1
+        // the player spawns at the top of the arena. When the map defines a spectator spawn it is
+        // anchored spectatorOffset blocks below it (so the lava tops out just under the spectator
+        // platform), otherwise it falls back to the configured start height.
+        val spectator = game.map?.spectatorSpawn
+        lavaY = (if (spectator != null) spectator.y - spectatorOffset else startY) - 1
         hasWarned = false
         placed.clear()
     }
 
     override fun tick(tick: Ticking.Tick) {
-        val playArea = game.playArea(size) ?: return
+        val playArea = game.playArea(size)
         // Wait for the configured start delay before the lava begins to rise.
         if (!tick.isInInterval(game.startingTick + startDelaySecs * 20, intervalSecs * 20)) return
 
@@ -70,7 +74,7 @@ class RisingLavaModifier(game: Game) : GameModifier(game) {
     override fun onEnd() {
         val area = game.playArea(size)
         val margin = 16
-        val top = (placed.maxOfOrNull { it.y } ?: 0).coerceAtLeast(area.maxY + 2)
+        val top = (placed.maxOfOrNull { it.y } ?: 0).coerceAtLeast(area.maxY + 2).coerceAtMost(game.world.maxHeight - 1)
         val minX = area.minX - margin
         val maxX = area.maxX + margin
         val minZ = area.minZ - margin

@@ -90,21 +90,44 @@ class PillarPlayer(player: Player, val game: Game, initialSnapshot: PlayerSnapsh
         player.playSoundSafe(Sound.ENTITY_ITEM_PICKUP, 0.75f) { Configuration.soundEffectsItem }
     }
 
+    // Restores the pre-queue state. Safe to call when offline: teleportation is skipped and the
+    // player is relocated to the snapshot location by onPlayerJoin when they come back online.
+    fun restore() {
+        initialSnapshot.set(player, restoreGameMode = true, restoreLocation = true)
+    }
+
     fun clear(display: Boolean = false) {
         if (display) {
             simpleScoreboard?.stop()
             simpleActionBar?.stop()
 
-            player.scoreboard = Bukkit.getScoreboardManager().mainScoreboard
+            if (player.isOnline)
+                player.scoreboard = Bukkit.getScoreboardManager().mainScoreboard
         }
 
-        player.closeInventory()
-        player.inventory.clear()
-        player.clearActivePotionEffects()
-        initialSnapshot.set(player, restoreGameMode = true, restoreLocation = true)
+        if (player.isOnline) {
+            player.closeInventory()
+            player.inventory.clear()
+            player.clearActivePotionEffects()
+        }
+        restore()
 
         if (Configuration.queueMethod == QueueMethod.AUTO)
-            bukkitRunLater(60L) { QueueManager.add(player) } // Wait 3 seconds before rejoining queue.
+            bukkitRunLater(60L) {
+                // Re-check online status when the task fires, not just when it was scheduled: a
+                // player who disconnected right after the game won't get re-queued while offline.
+                if (player.isOnline)
+                    QueueManager.add(player)
+            } // Wait 3 seconds before rejoining queue.
+    }
+
+    // Clears the inventory but keeps whatever the player placed into the offhand, so a shuffle never
+    // wipes an item they chose to carry.
+    fun clearKeepOffhand() {
+        val offhand = player.inventory.itemInOffHand
+        player.inventory.clear()
+        if (offhand.type != Material.AIR)
+            player.inventory.setItemInOffHand(offhand)
     }
 
     fun eliminate() = game.eliminate(this)

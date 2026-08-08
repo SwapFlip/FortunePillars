@@ -22,7 +22,9 @@ class ItemShuffleGame(id: String, center: Location, bukkitPlayers: List<Player>,
     init {
         addItemEvent {
             players.forEach { p ->
-                p.player.inventory.clear()
+                // Anything a player placed into their offhand survives the shuffle instead of being
+                // wiped with the hotbar when the inventory gets cleared.
+                p.clearKeepOffhand()
                 p.giveItems(items, differentItems = 9)
             }
         }

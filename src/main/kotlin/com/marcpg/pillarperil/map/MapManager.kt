@@ -34,6 +34,10 @@ object MapManager {
             BlockPos(x, y, z)
         }.toMutableList()
 
+        // Strip duplicate spawns and (0,0,0) placeholders (created when spawn N was set before
+        // spawns 1..N-1), so maps can never put multiple players into the same cage.
+        spawns.removeAll { it == BlockPos(0, 0, 0) || spawns.indexOf(it) != spawns.lastIndexOf(it) }
+
         val spectator = yaml.getIntegerList("spectator-spawn").let { if (it.size == 3) BlockPos(it[0], it[1], it[2]) else null }
         val deathHeight = if (yaml.contains("death-height")) yaml.getInt("death-height") else null
 

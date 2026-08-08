@@ -1,12 +1,17 @@
 package com.marcpg.pillarperil.game.modifier
 
+import com.marcpg.libpg.util.component
+import com.marcpg.libpg.util.locale
 import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameModifier
 import com.marcpg.pillarperil.game.GameModifierCompanion
 import com.marcpg.pillarperil.game.util.GameModifierInfo
+import com.marcpg.pillarperil.map.MapBounds
 import com.marcpg.pillarperil.util.Configuration
+import com.marcpg.pillarperil.util.Ticking
 import com.marcpg.pillarperil.util.playSoundSafe
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Location
 import org.bukkit.Sound
 import org.bukkit.entity.Entity
@@ -21,9 +26,11 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
 
     override val info: GameModifierInfo = modifierInfo
 
+    private val intervalSecs = Configuration.provider.getInt("modifiers.tnt-falls.interval", 10)
+    private val startDelaySecs = Configuration.provider.getInt("modifiers.tnt-falls.start-delay", 60)
     private val fuse = Configuration.provider.getInt("modifiers.tnt-falls.fuse-ticks", 200)
     private val perDrop = Configuration.provider.getInt("modifiers.tnt-falls.per-drop", 3)
-    private val size = Configuration.provider.getInt("modifiers.tnt-falls.size", 50)
+    private val size = Configuration.provider.getInt("modifiers.tnt-falls.size", 100)
 
     private val spawned = mutableListOf<Entity>()
 
@@ -37,15 +44,21 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
         clazz?.getMethod("setFuseTicks", Int::class.javaPrimitiveType)
     }
 
-    override fun onItemCycle() {
-        val playArea = game.playArea(size) ?: return
+    override fun tick(tick: Ticking.Tick) {
+        val playArea = game.playArea(size)
+        // TNT falls on its own schedule (every 10 seconds by default), independent of the item cycle.
+        if (!tick.isInInterval(game.startingTick + startDelaySecs * 20, intervalSecs * 20)) return
 
         game.players.playSoundSafe(Sound.ENTITY_TNT_PRIMED, 1.0f, 1.2f)
+        game.players.forEach { p ->
+            if (p.player.isOnline)
+                p.player.sendActionBar(p.locale().component("modifier.tnt-falls.warning", color = NamedTextColor.RED))
+        }
 
+        // Pick separate, non-adjacent random spots so the drops spread over the arena instead of
+        // stacking into one clump (and never the same spot twice).
         runCatching {
-            repeat(perDrop) {
-                val x = (playArea.minX..playArea.maxX).random()
-                val z = (playArea.minZ..playArea.maxZ).random()
+            randomSpots(playArea, perDrop).forEach { (x, z) ->
                 val location = Location(game.world, x + 0.5, (game.world.maxHeight - 1).toDouble(), z + 0.5)
                 val entity = game.world.spawnEntity(location, tntType)
                 runCatching { fuseSetter?.invoke(entity, fuse) }
@@ -54,6 +67,21 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
         }.onFailure {
             PillarPeril.LOG.error("[TntFalls] Could not spawn raining TNT.", it)
         }
+    }
+
+    // Picks up to `count` random (x, z) spots that are at least 4 blocks apart (and thus never
+    // resolve to the same 2x2 cell), retrying a few times before giving up on the last spot.
+    private fun randomSpots(area: MapBounds, count: Int): List<Pair<Int, Int>> {
+        val spots = mutableListOf<Pair<Int, Int>>()
+        var attempts = 0
+        while (spots.size < count && attempts < count * 8) {
+            attempts++
+            val x = (area.minX..area.maxX).random()
+            val z = (area.minZ..area.maxZ).random()
+            if (spots.none { (ox, oz) -> (ox - x) * (ox - x) + (oz - z) * (oz - z) < 16 })
+                spots += x to z
+        }
+        return spots
     }
 
     override fun onEnd() {

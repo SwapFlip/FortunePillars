@@ -188,7 +188,7 @@ object Commands {
             val locale = sender.locale()
 
             if (!Configuration.queueEnabled) {
-                sender.sendMessage(component("The queue is disabled.", NamedTextColor.RED))
+                sender.sendMessage(locale.component("queue.disabled", color = NamedTextColor.RED))
                 return true
             }
 
@@ -478,9 +478,14 @@ object Commands {
                             if (sender.world.name != arenaMap.world)
                                 return send(sender, locale.component("map.wrong_world", arenaMap.world, color = NamedTextColor.RED))
 
+                            // Spawns must be set in order; skipping one leaves a (0,0,0) placeholder
+                            // that would cage two players together during a game.
+                            if (n > arenaMap.spawns.size + 1)
+                                return send(sender, locale.component("map.spawns_out_of_order", color = NamedTextColor.RED))
+
                             val pos = BlockPos(sender.location.blockX, sender.location.blockY, sender.location.blockZ)
                             while (arenaMap.spawns.size < n)
-                                arenaMap.spawns.add(BlockPos(0, 0, 0))
+                                arenaMap.spawns.add(pos)
                             arenaMap.spawns[n - 1] = pos
                             MapManager.save(arenaMap)
                             send(sender, locale.component("map.set.spawn.success", n.toString(), arenaMap.name, "${pos.x}/${pos.y}/${pos.z}", color = NamedTextColor.GREEN))

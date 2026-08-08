@@ -88,24 +88,24 @@ abstract class Game(
     var arenaBounds: MapBounds? = null
     var customItemCountdown: (() -> Long)? = null
 
-    // The play area is a square centered on the map's spectator spawn (projected onto the pasted
-    // arena in the game world), which is where the actual gameplay happens. Games without a pasted
-    // arena fall back to a square around the game's center, so hazards like lava still work.
+    // The horizontal anchor the play area and the out-of-bounds radius are centered on: the map's
+    // spectator spawn projected onto the pasted arena, or null when playing without a pasted map.
+    private fun arenaAnchor(): Pair<Int, Int>? {
+        val bounds = arenaBounds
+        val map = map
+        if (bounds == null || map == null) return null
+        val spectator = map.spectatorSpawn ?: return null
+        return (bounds.minX + spectator.x - map.origin.x) to (bounds.minZ + spectator.z - map.origin.z)
+    }
+
+    // The play area is a square around the spectator-spawn anchor, which is where the actual
+    // gameplay happens. Games without a pasted arena fall back to a square around the game's
+    // center, so hazards like lava still work.
     fun playArea(size: Int): MapBounds {
         val bounds = arenaBounds
         if (bounds != null) {
-            val map = map
+            val (centerX, centerZ) = arenaAnchor() ?: ((bounds.minX + bounds.maxX) / 2 to (bounds.minZ + bounds.maxZ) / 2)
             val half = size / 2
-            val spectator = map?.spectatorSpawn
-            val centerX: Int
-            val centerZ: Int
-            if (map != null && spectator != null) {
-                centerX = bounds.minX + spectator.x - map.origin.x
-                centerZ = bounds.minZ + spectator.z - map.origin.z
-            } else {
-                centerX = (bounds.minX + bounds.maxX) / 2
-                centerZ = (bounds.minZ + bounds.maxZ) / 2
-            }
             return MapBounds(centerX - half, bounds.minY, centerZ - half, centerX + half, bounds.maxY, centerZ + half)
         }
 
@@ -115,12 +115,25 @@ abstract class Game(
         return MapBounds(cx - half, center.blockY - half, cz - half, cx + half, center.blockY + half, cz + half)
     }
 
+    // The horizontal center of the out-of-bounds radius: the same anchor as the play area.
+    private fun radiusCenter(): Pair<Int, Int> = arenaAnchor() ?: (center.blockX to center.blockZ)
+
     // ==================== GAME STATE ====================
 
     val timeLeft = Time()
     val itemCountdown = Time(0, allowNegatives = true)
 
     private var spawnCagesReleased = false
+
+    // The game has started once the cages release. Damage and inventory locking key off this
+    // instead of the item countdown, which keeps cycling for the entire match.
+    val started: Boolean get() = spawnCagesReleased
+
+    // Out-of-bounds radius mechanic: the safe zone around the spectator spawn (radiusCenter()).
+    // Once the game time runs out without a winner the game enters shrink mode and the radius
+    // closes in every second, forcing a confrontation instead of ending the game outright.
+    private var shrinkMode = false
+    private var currentRadius: Double = Configuration.radiusBase.toDouble()
 
     val deathHeight: Double get() = map?.deathHeight?.toDouble() ?: Configuration.deathHeight
 
@@ -209,24 +222,24 @@ abstract class Game(
     open fun init() {
         world.setGameRuleSafe("DO_IMMEDIATE_RESPAWN", "IMMEDIATE_RESPAWN", true)
         world.setGameRuleSafe("DO_MOB_SPAWNING", "TRUE", true)
+        world.setGameRuleSafe("NATURAL_REGENERATION", "NATURAL_REGENERATION", true)
+        world.setPVP(true)
 
         bukkitPlayers
             .map { PillarPlayer(it, this, QueueManager.consumeJoinSnapshot(it)) }
             .onEach {
                 QueueManager.remove(it.player)
 
+                // Close any open inventory first, so an item held on the cursor drops into the
+                // inventory and gets wiped with it instead of being smuggled into the game.
+                it.player.closeInventory()
+                it.player.openInventory.setCursor(null)
+
                 it.player.gameMode = GameMode.SURVIVAL
                 it.player.clearActivePotionEffects()
                 it.player.inventory.clear()
-                it.player.foodLevel = 20
-                it.player.saturation = 20.0f
-
-                val maxHealth = it.player.getAttributeSafe("MAX_HEALTH")?.value
-                if (maxHealth != null) {
-                    it.player.health = maxHealth
-                } else {
-                    it.player.health = it.player.maxHealth
-                }
+                it.player.setInvulnerable(true)
+                refill(it.player)
             }
             .forEach {
                 (initialPlayers as MutableList) += it
@@ -301,8 +314,16 @@ abstract class Game(
 
         arenaBounds = MapPaster.paste(schematic, world, map.origin)
 
+        // Spawns are unique-ified here so two players can never end up in the same cage: maps may
+        // contain duplicate entries, or (0,0,0) placeholders left behind when spawn N was set before
+        // spawns 1..N-1. If the map runs out of usable spawns, players are offset from the origin.
+        val usableSpawns = map.spawns.distinct().filter { it != BlockPos(0, 0, 0) }
+        val used = mutableSetOf<BlockPos>()
         players.forEachIndexed { i, p ->
-            val spawn = map.spawns.getOrNull(i) ?: map.origin
+            val spawn = usableSpawns.getOrNull(i)?.takeUnless { it in used }
+                ?: usableSpawns.firstOrNull { it !in used }
+                ?: BlockPos(map.origin.x, map.origin.y + i * 3, map.origin.z)
+            used += spawn
             val feet = spawn.toLocation(world, yOffset = 3.0)
             Cage.gameCage(p.player, feet)
             p.player.teleport(feet)
@@ -319,6 +340,20 @@ abstract class Game(
     }
 
     open fun addItem(player: PillarPlayer) = player.giveItems(items)
+
+    // Restores a player to full health, hunger and saturation. Called both when the game initializes
+    // and again right as the cages release, so nobody starts the actual fight with drained stats.
+    protected fun refill(player: Player) {
+        player.foodLevel = 20
+        player.saturation = 20.0f
+
+        val maxHealth = player.getAttributeSafe("MAX_HEALTH")?.value
+        if (maxHealth != null) {
+            player.health = maxHealth
+        } else {
+            player.health = player.maxHealth
+        }
+    }
 
     // ================= UTILITY METHODS =================
 
@@ -406,7 +441,15 @@ abstract class Game(
     }
 
     override fun tick(tick: Ticking.Tick) {
-        if (ending || players.isEmpty()) return
+        if (ending) return
+
+        // Everyone left (or disconnected) before the game could finish: shut it down so the world
+        // and arena get cleaned up instead of leaking in GameManager forever.
+        if (players.isEmpty()) {
+            if (initialPlayers.isNotEmpty())
+                end(EndingCause.FORCE)
+            return
+        }
 
         if (tick.isSecond(startingTick)) {
             val countdown = itemCountdown.get()
@@ -416,6 +459,14 @@ abstract class Game(
                     Cage.clearGameCages()
 
                     players.forEach { p ->
+                        val pl = p.player
+                        // The start of the actual fight: refill the stats, drop the invulnerability
+                        // granted in init() and clear any leftover teleport invulnerability ticks,
+                        // so hits land from the very first second.
+                        refill(pl)
+                        pl.setInvulnerable(false)
+                        pl.noDamageTicks = 0
+
                         p.showTitle(Title.title(
                             p.locale().component("game.start.go", color = NamedTextColor.GREEN),
                             p.locale().component("game.cages.open", color = NamedTextColor.YELLOW)
@@ -437,8 +488,47 @@ abstract class Game(
             itemCountdown.dec()
 
             timeLeft.dec()
-            if (timeLeft.get() <= 0)
-                end(EndingCause.TIME_OVER)
+
+            // No winner by the time limit: instead of ending the game, enter shrink mode and close
+            // the out-of-bounds radius in, forcing the remaining players into the center.
+            if (timeLeft.get() <= 0 && !shrinkMode) {
+                if (players.size > 1 && Configuration.radiusEnabled) {
+                    shrinkMode = true
+                    players.forEach { p ->
+                        p.showTitle(Title.title(
+                            p.locale().component("game.shrink.title", color = NamedTextColor.RED),
+                            p.locale().component("game.shrink.subtitle", color = NamedTextColor.YELLOW)
+                        ))
+                    }
+                } else {
+                    end(EndingCause.TIME_OVER)
+                }
+            }
+
+            // Shrink phase: the radius closes in every second until it's fully gone.
+            if (shrinkMode) {
+                currentRadius -= Configuration.radiusShrinkPerSecond
+                if (currentRadius <= 0.0) {
+                    end(EndingCause.TIME_OVER)
+                    return
+                }
+            }
+
+            // Out-of-bounds damage: anyone horizontally outside the radius loses damage-hearts every
+            // second, covering the full column from the void up to the top of the world.
+            if (Configuration.radiusEnabled && spawnCagesReleased) {
+                val (cx, cz) = radiusCenter()
+                val radius = currentRadius
+                players.forEach { p ->
+                    val loc = p.player.location
+                    val dx = loc.blockX - cx
+                    val dz = loc.blockZ - cz
+                    if (Math.hypot(dx.toDouble(), dz.toDouble()) > radius) {
+                        p.player.noDamageTicks = 0
+                        p.player.damage(Configuration.radiusDamageHearts * 2.0)
+                    }
+                }
+            }
         }
 
         tickEvents.filter { tick.isInInterval(startingTick, it.value) }.forEach { it.key() }
@@ -488,8 +578,8 @@ abstract class Game(
                     p.locale().component("info.end.draw.subtitle", winners.joinToString(" & "), color = NamedTextColor.YELLOW)
                 ))
                 EndingCause.ERROR -> p.showTitle(Title.title(
-                    component("Nobody wins!", color = NamedTextColor.RED),
-                    component("An error occurred, resulting in no winner.", color = NamedTextColor.GRAY)
+                    p.locale().component("info.end.error.title", color = NamedTextColor.RED),
+                    p.locale().component("info.end.error.subtitle", color = NamedTextColor.GRAY)
                 ))
             }
 
@@ -513,34 +603,63 @@ abstract class Game(
             pl.closeInventory()
         }
 
-        Configuration.endingCommands.forEach { PillarPeril.sendCommand(it(
-            "id" to id,
-            "mode" to info.mode.gameInfo.namespace,
-            "players" to initialPlayers.size,
-            "cause" to cause.name.lowercase(),
-            "world" to center.world.name,
-            "x" to center.x,
-            "y" to center.y,
-            "z" to center.z,
-        )) }
-        cleanup()
-
-        // Always send players back to the main server world after a game, never the game world.
-        // Runs after the cleanup so the snapshot restore can't override it.
-        initialPlayers.forEach {
-            val pl = it.player
-            if (pl.isOnline)
-                pl.teleport(Configuration.getSpawnLocation(Bukkit.getWorlds().first()))
+        try {
+            Configuration.endingCommands.forEach { PillarPeril.sendCommand(it(
+                "id" to id,
+                "mode" to info.mode.gameInfo.namespace,
+                "players" to initialPlayers.size,
+                "cause" to cause.name.lowercase(),
+                "world" to center.world.name,
+                "x" to center.x,
+                "y" to center.y,
+                "z" to center.z,
+            )) }
+            cleanup()
+        } finally {
+            // Always send players back to the main server world after a game, never the game world.
+            // Runs after the cleanup so the snapshot restore can't override it. Each player is guarded
+            // so one failure (e.g. an offline player) can't strand the others in the game world.
+            // When `time-after-game` is set, the leave is delayed so the end titles and kill-cam can
+            // play out before players get teleported away.
+            val sendBack = {
+                initialPlayers.forEach {
+                    val pl = it.player
+                    // AUTO-queued players get re-added to the queue by their own restore; don't yank
+                    // them out of the queue arena when the delayed send-back fires later.
+                    if (pl.isOnline && pl !in QueueManager.queue)
+                        runCatching { pl.teleport(Configuration.getSpawnLocation(Bukkit.getWorlds().first())) }
+                }
+            }
+            if (Configuration.timeAfterGame > 0)
+                bukkitRunLater(Configuration.timeAfterGame * 20L) { sendBack() }
+            else
+                sendBack()
         }
     }
 
     private fun cleanup() {
         GameManager.remove(this)
-        initialPlayers.forEach { it.clear(true) }
-        buildings.reset()
+        // Restore every player individually; an offline or otherwise un-cleanable player must not
+        // abort the cleanup for the rest of them (or skip the arena reset below).
+        initialPlayers.forEach { runCatching { it.clear(true) } }
+        runCatching { buildings.reset() }
         bossBar?.stop()
-        modifiers.forEach { it.onEnd() }
-        // Sweep any dropped items left in the arena, so the map is clean for the next round.
-        sweepArenaItems(arenaBounds ?: playArea(60), minTicksLived = 0)
+        // A failing modifier teardown (e.g. a chunk-snapshot scan) must not abort the cleanup and
+        // strand the players in the game world.
+        modifiers.forEach { m -> runCatching { m.onEnd() }.onFailure { error("Could not stop the ${m.info.namespace} modifier.", it) } }
+        // Sweep any dropped items and leftover mobs from the arena, so the map is clean for the next round.
+        runCatching { sweepArenaItems(arenaBounds ?: playArea(60), minTicksLived = 0) }
+        runCatching { sweepArenaEntities(arenaBounds ?: playArea(60)) }
+    }
+
+    // Removes all non-player, non-item entities (mobs, TNT, ...) inside the given area, so nothing
+    // spawned during the game survives into the next one.
+    private fun sweepArenaEntities(bounds: MapBounds) {
+        world.getEntities().forEach { entity ->
+            if (entity is Player || entity is Item) return@forEach
+            val loc = entity.location
+            if (loc.blockX !in bounds.minX..bounds.maxX || loc.blockY !in bounds.minY..bounds.maxY || loc.blockZ !in bounds.minZ..bounds.maxZ) return@forEach
+            entity.remove()
+        }
     }
 }

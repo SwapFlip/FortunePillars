@@ -5,6 +5,7 @@ import com.marcpg.libpg.display.location
 import com.marcpg.libpg.display.teleport
 import com.marcpg.libpg.util.bukkitRunLater
 import com.marcpg.libpg.util.component
+import com.marcpg.libpg.util.locale
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameCompanion
 import com.marcpg.pillarperil.game.GameModifier
@@ -28,32 +29,37 @@ class SwapperGame(id: String, center: Location, bukkitPlayers: List<Player>, mod
         // Countdown and swap are driven by the same event, so the warning always matches the swap
         // instead of two independently-clocked intervals drifting apart over time.
         addTickEvent(Time(30, Time.Unit.SECONDS)) {
-            val current = players.toList()
-            if (current.size < 2) return@addTickEvent
+            // Live list, not a snapshot: eliminated players must not keep receiving warning
+            // action bars (or block the swap size check) after they became spectators.
+            if (players.size < 2) return@addTickEvent
 
             repeat(5) { i ->
                 val remaining = 5 - i
                 bukkitRunLater(i * 20L) {
                     if (gameEnded()) return@bukkitRunLater
-                    current.forEach { p ->
+                    players.forEach { p ->
                         if (p.player.isOnline)
-                            p.player.sendActionBar(component("Swapping in $remaining...", NamedTextColor.GOLD))
+                            p.player.sendActionBar(p.locale().component("game.swapper.countdown", remaining.toString(), color = NamedTextColor.GOLD))
                     }
                 }
             }
 
             bukkitRunLater(5 * 20L) {
-                if (gameEnded() || current.size < 2) return@bukkitRunLater
+                if (gameEnded() || players.size < 2) return@bukkitRunLater
                 val alive = players.shuffled()
                 alive.forEach { p ->
                     if (p.player.isOnline)
-                        p.player.sendActionBar(component("Swapping!", NamedTextColor.GREEN))
+                        p.player.sendActionBar(p.locale().component("game.swapper.now", color = NamedTextColor.GREEN))
                 }
 
                 val temp: Location = alive.first().location().clone()
                 for (i in 0..<alive.size - 1)
                     alive[i].teleport(alive[i + 1].location())
                 alive.last().teleport(temp)
+
+                // Teleporting grants 3 seconds of invulnerability; clear it so the swap doesn't
+                // make players unhittable and swallow hits.
+                alive.forEach { p -> p.player.noDamageTicks = 0 }
             }
         }
     }

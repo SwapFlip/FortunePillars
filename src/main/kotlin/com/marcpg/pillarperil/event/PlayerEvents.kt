@@ -3,6 +3,8 @@ package com.marcpg.pillarperil.event
 import com.marcpg.libpg.util.bukkitRunLater
 import com.marcpg.libpg.util.component
 import com.marcpg.libpg.util.locale
+import com.marcpg.pillarperil.PillarPeril
+import com.marcpg.pillarperil.game.util.Cage
 import com.marcpg.pillarperil.game.util.GameManager
 import com.marcpg.pillarperil.game.util.QueueManager
 import com.marcpg.pillarperil.util.Configuration
@@ -14,10 +16,14 @@ import org.bukkit.entity.Projectile
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.PlayerDeathEvent
+import org.bukkit.event.inventory.InventoryClickEvent
+import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
+import org.bukkit.event.player.PlayerSwapHandItemsEvent
 
 object PlayerEvents : Listener {
     @EventHandler(ignoreCancelled = true)
@@ -50,18 +56,21 @@ object PlayerEvents : Listener {
         player.eliminate()
     }
 
-    @EventHandler(ignoreCancelled = true)
-    fun onPlayerDamage(event: EntityDamageByEntityEvent) {
+    // Every damage source is cancelled while the game hasn't started yet. This rigidly enforces
+    // "invincible until the game starts": players in their cages survive PvP, falls, lava, TNT,
+    // explosions, suffocation, etc. Once the countdown hits zero, damage is handled normally.
+    @EventHandler
+    fun onDamage(event: EntityDamageEvent) {
         val victim = GameManager.player(event.entity as? Player ?: return) ?: return
-        val attacker = (event.damager as? Projectile)?.shooter as? Player ?: event.damager as? Player ?: return
-        val attackerPillar = victim.game.player(attacker, false) ?: return
 
-        // PvP is disabled during the pre-game countdown, while players are still inside their cages.
-        if (victim.game.itemCountdown.get() > 0) {
+        if (!victim.game.started) {
             event.isCancelled = true
             return
         }
 
+        if (event !is EntityDamageByEntityEvent) return
+        val attacker = (event.damager as? Projectile)?.shooter as? Player ?: event.damager as? Player ?: return
+        val attackerPillar = victim.game.player(attacker, false) ?: return
         victim.lastDamagedBy = attackerPillar.uuid()
         victim.lastDamageTick = Bukkit.getCurrentTick()
     }
@@ -77,13 +86,66 @@ object PlayerEvents : Listener {
 
     @EventHandler(ignoreCancelled = true)
     fun onPlayerJoin(event: PlayerJoinEvent) {
-        if (Configuration.queueMethod == QueueMethod.AUTO)
-            bukkitRunLater(20L) { if (event.player.isOnline) QueueManager.add(event.player) } // Wait 1 second before rejoining queue.
+        val player = event.player
+        when (Configuration.queueMethod) {
+            QueueMethod.AUTO -> bukkitRunLater(20L) { if (player.isOnline) QueueManager.add(player) } // Wait 1 second before rejoining queue.
+
+            // Players who left mid-game (or whose game ended while they were offline) get their snapshot
+            // restored on rejoin, so they never spawn back into the PillarPeril game world.
+            QueueMethod.COMMAND -> bukkitRunLater(5L) {
+                if (!player.isOnline) return@bukkitRunLater
+                if (player in QueueManager.queue || GameManager.isInGame(player, onlyAlive = false)) return@bukkitRunLater
+
+                val stillInGame = GameManager.player(player, onlyAlive = false)
+                if (stillInGame != null) {
+                    runCatching { stillInGame.restore() }
+                        .onFailure { stillInGame.game.error("Could not restore ${player.name} after rejoin.", it) }
+                } else if (Cage.isPluginWorld(player.world)) {
+                    // Not in a game anymore, but standing where a game used to be: send them home.
+                    runCatching { player.teleport(Configuration.getSpawnLocation(player.world)) }
+                        .onFailure { PillarPeril.LOG.warn("Could not teleport reconnecting player ${player.name} back to the spawn.", it) }
+                }
+            }
+        }
     }
 
     @EventHandler(ignoreCancelled = true)
     fun onPlayerQuit(event: PlayerQuitEvent) {
-        QueueManager.remove(event.player)
-        GameManager.player(event.player)?.eliminate()
+        val player = event.player
+        QueueManager.remove(player)
+
+        // Restore the pre-game state for anyone who was part of a game, alive or eliminated, so a
+        // mid-game quit never leaves a dangling respawn point inside the game world.
+        GameManager.player(player, onlyAlive = false)?.let { pillar ->
+            pillar.game.eliminate(pillar)
+            runCatching { pillar.restore() }
+                .onFailure { pillar.game.error("Could not fully restore state for disconnected ${pillar.player.name}.", it) }
+        }
+    }
+
+    // While players wait in their cages during the countdown, the inventories are locked: no
+    // click-moves, no hotbar swaps, no drops, so nothing can be smuggled into the game.
+    private fun inPreGame(eventPlayer: Player): Boolean {
+        val game = GameManager.player(eventPlayer)?.game ?: return false
+        return !game.started
+    }
+
+    @EventHandler
+    fun onInventoryClick(event: InventoryClickEvent) {
+        val player = event.whoClicked as? Player ?: return
+        if (inPreGame(player)) {
+            event.isCancelled = true
+            player.closeInventory()
+        }
+    }
+
+    @EventHandler
+    fun onSwapHandItems(event: PlayerSwapHandItemsEvent) {
+        if (inPreGame(event.player)) event.isCancelled = true
+    }
+
+    @EventHandler
+    fun onDrop(event: PlayerDropItemEvent) {
+        if (inPreGame(event.player)) event.isCancelled = true
     }
 }

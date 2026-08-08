@@ -1,6 +1,7 @@
 package com.marcpg.pillarperil.game.util
 
 import com.marcpg.libpg.util.component
+import com.marcpg.libpg.util.locale
 import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.util.Configuration
@@ -54,6 +55,7 @@ object Cage {
             PillarPeril.LOG.info("Queue world \"$name\" uses placeholders, skipping pre-creation.")
             return null
         }
+        queueWorldName = name
 
         return Bukkit.getWorld(name) ?: runCatching {
             WorldCreator(name).generator(VoidChunkGenerator()).createWorld()
@@ -61,6 +63,14 @@ object Cage {
             PillarPeril.LOG.error("Could not create queue world \"$name\".", it)
         }.getOrNull()
     }
+
+    // The queue world name captured by the last ensureQueueWorld() call, or null when it uses placeholders.
+    private var queueWorldName: String? = null
+
+    // Whether a world is owned by PillarPeril (the queue lobby or any running game), used to detect
+    // players who ended up stranded in one of them.
+    fun isPluginWorld(world: World): Boolean =
+        world.name == queueWorldName || GameManager.games.values.any { it.world.name == world.name }
 
     private fun resolveWorld(): World? = ensureQueueWorld()
 
@@ -148,12 +158,12 @@ object Cage {
     private fun giveLobbyItems(player: Player) {
         val leave = ItemStack(Material.RED_DYE).apply {
             val meta = itemMeta
-            meta.displayName(component("Leave Queue", NamedTextColor.RED))
+            meta.displayName(player.locale().component("queue.item.leave", color = NamedTextColor.RED))
             itemMeta = meta
         }
         val vote = ItemStack(Material.CHEST).apply {
             val meta = itemMeta
-            meta.displayName(component("Vote for Game Mode", NamedTextColor.GOLD))
+            meta.displayName(player.locale().component("queue.item.vote", color = NamedTextColor.GOLD))
             itemMeta = meta
         }
         player.inventory.setItem(0, vote)

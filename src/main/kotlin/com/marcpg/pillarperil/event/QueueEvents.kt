@@ -6,6 +6,7 @@ import com.marcpg.libpg.util.component
 import com.marcpg.libpg.util.locale
 import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.game.util.Cage
+import com.marcpg.pillarperil.game.util.GameManager
 import com.marcpg.pillarperil.game.util.QueueManager
 import com.marcpg.pillarperil.map.ArenaMap
 import com.marcpg.pillarperil.map.MapManager
@@ -37,6 +38,7 @@ import java.util.Locale
 object QueueEvents : Listener {
     private const val VOTE_TITLE = "Vote for Game Mode"
     private const val MAP_TITLE = "Select a Map"
+    private const val MAX_VISIBLE_MAPS = 14 // Slots available for maps in the 36-slot menu.
     private val MAP_KEY = NamespacedKey(PillarPeril.PLUGIN, "map")
 
     private val leaving = mutableSetOf<Player>()
@@ -80,12 +82,12 @@ object QueueEvents : Listener {
                 event.isCancelled = true
                 if (!leaving.add(player)) return
 
-                player.sendMessage(component("Leaving the queue in 3 seconds...", NamedTextColor.RED))
+                player.sendMessage(player.locale().component("queue.leave.confirm", color = NamedTextColor.RED))
                 bukkitRunLater(60L) {
                     leaving.remove(player)
                     if (player.isOnline && player in QueueManager.queue) {
                         QueueManager.remove(player)
-                        player.sendMessage(component("You left the queue.", NamedTextColor.RED))
+                        player.sendMessage(player.locale().component("queue.leave.success", color = NamedTextColor.RED))
                         player.teleport(Configuration.getSpawnLocation(player.world))
                     }
                 }
@@ -125,6 +127,8 @@ object QueueEvents : Listener {
             10, 11, 12, 13, 14, 15, 16 -> modeOrder.getOrNull(event.rawSlot - 10)?.let { QueueManager.recordVote(player, mode = it) }
             19, 20, 21, 22, 23, 24, 25 -> typeOrder.getOrNull(event.rawSlot - 19)?.let { QueueManager.recordVote(player, type = it) }
             28, 29, 30, 31, 32, 33, 34 -> timeOrder.getOrNull(event.rawSlot - 28)?.let { QueueManager.recordVote(player, time = it) }
+            // Bottom row item: one click votes Random for mode, type, time and item loot.
+            40 -> QueueManager.recordVote(player, mode = QueueManager.Vote.RANDOM, type = QueueManager.Vote.RANDOM, time = QueueManager.Vote.RANDOM_TIME)
         }
 
         refreshVoteMenus()
@@ -180,19 +184,33 @@ object QueueEvents : Listener {
         val maps = QueueManager.mapVoteCandidates()
         if (maps.isEmpty()) return false
 
-        val inv = Bukkit.createInventory(null, 27, Component.text(MAP_TITLE))
-        border(inv, 27)
+        val inv = Bukkit.createInventory(null, 36, Component.text(MAP_TITLE))
+        border(inv, 36)
+        fillMapMenu(inv, maps, player.locale())
+        player.openInventory(inv)
+        return true
+    }
 
+    // Rebuilds every open map menu, so the vote counts and "players playing" numbers shown while
+    // someone is looking at the list stay up-to-date even as games start and finish.
+    fun refreshMapMenus() {
+        val maps = QueueManager.mapVoteCandidates()
+        if (maps.isEmpty()) return
+        Bukkit.getOnlinePlayers().forEach { player ->
+            if (player.openInventory.title() != Component.text(MAP_TITLE)) return@forEach
+            fillMapMenu(player.openInventory.topInventory, maps, player.locale())
+        }
+    }
+
+    private fun fillMapMenu(inv: Inventory, maps: List<ArenaMap>, locale: Locale) {
         val leader = maps.maxByOrNull { QueueManager.mapVoteCounts()[it.name] ?: 0 }?.name
         maps.forEachIndexed { i, map ->
-            if (i >= 7) return@forEachIndexed
+            if (i >= MAX_VISIBLE_MAPS) return@forEachIndexed
             val votes = QueueManager.mapVoteCounts()[map.name] ?: 0
             // Only mark the leader green if it actually has votes; otherwise every map stays grey.
             val isLeader = votes > 0 && map.name == leader
-            inv.setItem(10 + i, mapItem(map, votes, isLeader))
+            inv.setItem((if (i < 7) 1 else 2) * 9 + 1 + i % 7, mapItem(map, votes, isLeader, locale))
         }
-        player.openInventory(inv)
-        return true
     }
 
     private fun openVoteMenu(player: Player) {
@@ -210,18 +228,30 @@ object QueueEvents : Listener {
     }
 
     private fun fillMenu(inv: Inventory, locale: Locale) {
-        modeOrder.forEachIndexed { i, ns ->
+modeOrder.forEachIndexed { i, ns ->
             val name = locale.string("game.$ns.name")
-            inv.setItem(10 + i, voteItem(modeMaterials[ns] ?: Material.PAPER, name, QueueManager.modeVoteCounts()[ns] ?: 0, locale.string("vote.category.mode")))
+            inv.setItem(10 + i, voteItem(modeMaterials[ns] ?: Material.PAPER, name, QueueManager.modeVoteCounts()[ns] ?: 0, locale.string("vote.category.mode"), locale))
         }
         typeOrder.forEachIndexed { i, ns ->
             val name = locale.string("modifier.$ns.name")
-            inv.setItem(19 + i, voteItem(typeMaterials[ns] ?: Material.PAPER, name, QueueManager.typeVoteCounts()[ns] ?: 0, locale.string("vote.category.type")))
+            inv.setItem(19 + i, voteItem(typeMaterials[ns] ?: Material.PAPER, name, QueueManager.typeVoteCounts()[ns] ?: 0, locale.string("vote.category.type"), locale))
         }
         timeOrder.forEachIndexed { i, t ->
             val name = "$t ${locale.string("vote.time.seconds")}"
-            inv.setItem(28 + i, voteItem(timeMaterials[t] ?: Material.PAPER, name, QueueManager.timeVoteCounts()[t] ?: 0, locale.string("vote.category.time")))
+            inv.setItem(28 + i, voteItem(timeMaterials[t] ?: Material.PAPER, name, QueueManager.timeVoteCounts()[t] ?: 0, locale.string("vote.category.time"), locale))
         }
+        // Bottom-center "Random" button: votes for random mode, type, time and item loot at once.
+        val randomVotes = QueueManager.randomVoteCount()
+        inv.setItem(40, ItemStack(Material.NETHER_STAR).apply {
+            val meta = itemMeta
+            meta.displayName(Component.text(locale.string("vote.random")).color(NamedTextColor.GOLD))
+            meta.lore(listOf(
+                Component.text(locale.string("vote.random.description")).color(NamedTextColor.DARK_GRAY),
+                Component.text(locale.string("vote.votes", randomVotes.toString()))
+                    .color(if (randomVotes > 0) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY),
+            ))
+            itemMeta = meta
+        })
     }
 
     private fun border(inv: Inventory, size: Int) {
@@ -238,28 +268,35 @@ object QueueEvents : Listener {
         }
     }
 
-    private fun voteItem(material: Material, name: String, votes: Int, category: String): ItemStack {
+    private fun voteItem(material: Material, name: String, votes: Int, category: String, locale: Locale): ItemStack {
         val item = ItemStack(material)
         val meta: ItemMeta = item.itemMeta
         meta.displayName(Component.text(name).color(NamedTextColor.GOLD))
         meta.lore(listOf(
             Component.text(category).color(NamedTextColor.DARK_GRAY),
-            Component.text("Votes: $votes").color(if (votes > 0) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY),
+            Component.text(locale.string("vote.votes", votes.toString()))
+                .color(if (votes > 0) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY),
         ))
         item.itemMeta = meta
         return item
     }
 
-    private fun mapItem(map: ArenaMap, votes: Int, isLeader: Boolean): ItemStack {
+    private fun mapItem(map: ArenaMap, votes: Int, isLeader: Boolean, locale: Locale): ItemStack {
         val item = ItemStack(if (isLeader) Material.SLIME_BALL else Material.FIRE_CHARGE)
         val meta: ItemMeta = item.itemMeta
         meta.displayName(Component.text(map.displayName ?: map.name).color(NamedTextColor.GOLD))
         meta.persistentDataContainer.set(MAP_KEY, PersistentDataType.STRING, map.name)
+        val playersPlaying = GameManager.games.values
+            .filter { it.map?.name == map.name }
+            .sumOf { it.players.size }
         meta.lore(buildList {
             map.description?.split('|')?.map { it.trim() }?.filter { it.isNotEmpty() }?.forEach { line ->
                 add(Component.text(line).color(NamedTextColor.GRAY))
             }
-            add(Component.text("Votes: $votes").color(if (votes > 0) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY))
+            add(Component.text(locale.string("map.players.playing", playersPlaying.toString()))
+                .color(if (playersPlaying > 0) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY))
+            add(Component.text(locale.string("vote.votes", votes.toString()))
+                .color(if (votes > 0) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY))
         })
         item.itemMeta = meta
         return item

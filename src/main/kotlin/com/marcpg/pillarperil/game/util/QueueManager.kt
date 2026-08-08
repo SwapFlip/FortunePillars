@@ -5,6 +5,7 @@ import com.marcpg.libpg.util.component
 import com.marcpg.libpg.util.locale
 import com.marcpg.pillarperil.PillarPeril
 import com.marcpg.pillarperil.Registry
+import com.marcpg.pillarperil.event.QueueEvents
 import com.marcpg.pillarperil.game.Game
 import com.marcpg.pillarperil.game.GameCompanion
 import com.marcpg.pillarperil.map.ArenaMap
@@ -21,7 +22,6 @@ import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.Sound
 import org.bukkit.World
-import org.bukkit.entity.Item
 import org.bukkit.entity.Player
 import java.util.UUID
 
@@ -32,7 +32,17 @@ object QueueManager : Ticking {
     private const val VOTE_LOCK_SECONDS = 5
     private val ANNOUNCE_SECONDS = setOf(60L, 30L, 15L, 5L, 4L, 3L, 2L, 1L)
 
-    data class Vote(val mode: String? = null, val type: String? = null, val time: Int? = null, val map: String? = null)
+    // The item-time options offered in the vote menu. Also used when a "Random" vote wins.
+    val TIME_OPTIONS = listOf(3, 5, 10, 15)
+
+    data class Vote(val mode: String? = null, val type: String? = null, val time: Int? = null, val map: String? = null) {
+        companion object {
+            // Sentinel value a player votes when they pick "Random": if it wins, the category is
+            // picked randomly at game start instead of falling back to the configured default.
+            const val RANDOM = "__random__"
+            const val RANDOM_TIME = Int.MIN_VALUE
+        }
+    }
 
     val queue = ArrayDeque<Player>()
 
@@ -63,15 +73,37 @@ object QueueManager : Ticking {
         else -> Configuration.queueStartDelay
     }
 
-    fun mapVoteCandidates(): List<ArenaMap> {
-        val world = Cage.ensureQueueWorld() ?: return emptyList()
+    // All maps that could host the queue: in a supported world and with a saved schematic.
+    private fun availableMaps(world: World): List<ArenaMap> {
         val pool = if (Configuration.queueMapPool.isEmpty())
             MapManager.maps.values
         else
             MapManager.maps.values.filter { it.name in Configuration.queueMapPool }
-
-        return pool.filter { it.world == world.name && it.spawns.size >= Configuration.queueMinPlayers && MapManager.schematicFile(it.name).exists() }
+        return pool.filter { it.world == world.name && MapManager.schematicFile(it.name).exists() }
             .sortedBy { it.name }
+    }
+
+    fun mapVoteCandidates(): List<ArenaMap> {
+        val world = Cage.ensureQueueWorld() ?: return emptyList()
+        return availableMaps(world).filter { it.spawns.size >= Configuration.queueMinPlayers }
+    }
+
+    // If the current arena has fewer cages than players queued, re-paste a bigger map and move
+    // everyone already queued onto it, so the spawning can never wrap around and put two players
+    // into the same cage.
+    private fun growArenaIfNeeded(world: World) {
+        val current = arenaMap ?: return
+        if (current.spawns.size >= queue.size) return
+
+        val bigger = availableMaps(world)
+            .filter { it != current && it.spawns.size >= queue.size }
+            .minByOrNull { it.spawns.size } ?: return
+
+        if (!pasteMap(bigger)) return
+        queue.forEachIndexed { i, p ->
+            val spawn = bigger.spawns.getOrNull(i) ?: bigger.origin
+            Cage.arena(p, spawn.toLocation(world))
+        }
     }
 
     // Returns the state the player had before joining the queue, removing it from the pending storage.
@@ -88,6 +120,9 @@ object QueueManager : Ticking {
     fun timeVoteCounts(): Map<Int, Int> = votes.values.mapNotNull { it.time }.groupingBy { it }.eachCount()
     fun mapVoteCounts(): Map<String, Int> = votes.values.mapNotNull { it.map }.groupingBy { it }.eachCount()
 
+    // Number of queued players that voted "Random" for all three categories.
+    fun randomVoteCount(): Int = votes.values.count { it.mode == Vote.RANDOM && it.type == Vote.RANDOM && it.time == Vote.RANDOM_TIME }
+
     fun add(player: Player, preferredMap: ArenaMap? = null) {
         if (!Configuration.queueEnabled || player in queue || GameManager.isInGame(player)) return
 
@@ -97,25 +132,25 @@ object QueueManager : Ticking {
         if (queue.isEmpty()) {
             if (preferredMap == null || !pasteMap(preferredMap))
                 loadArena()
-        } else if (preferredMap != null && preferredMap != arenaMap && preferredMap.spawns.size >= queue.size && pasteMap(preferredMap)) {
-            // A new player picked a different map: swap the shared arena and re-place everyone already queued.
-            val world = Cage.ensureQueueWorld()
-            if (world != null) {
-                queue.forEachIndexed { i, p ->
-                    val spawn = preferredMap.spawns.getOrNull(i) ?: preferredMap.origin
-                    Cage.arena(p, spawn.toLocation(world))
-                }
-            }
         }
+        // Bug 11: a newcomer's map pick must NEVER replace the arena under already-queued players.
+        // It becomes their vote and is resolved together with everyone else's when the game starts.
 
         queue.addLast(player)
 
-        val map = arenaMap
+        // Make sure the arena has enough cages that no spawn wraps around - otherwise two players
+        // would be dropped into the same cage (both facing the same interior pillar).
         val world = Cage.ensureQueueWorld()
-        if (map != null && world != null && map.spawns.isNotEmpty()) {
-            val spawn = map.spawns[(queue.size - 1) % map.spawns.size]
+        if (world != null)
+            growArenaIfNeeded(world)
+
+        val map = arenaMap
+        if (map != null && world != null && map.spawns.size >= queue.size) {
+            val spawn = map.spawns[queue.size - 1]
             Cage.arena(player, spawn.toLocation(world))
         } else {
+            // Never wrap the spawn index around: if no bigger arena exists, the newcomer waits in
+            // the lobby instead of sharing a cage with a player that joined earlier.
             Cage.lobby(player, queue.size - 1, queue.size)
         }
 
@@ -143,6 +178,11 @@ object QueueManager : Ticking {
 
     override fun tick(tick: Ticking.Tick) {
         if (!Configuration.queueEnabled) return
+
+        // Keep the map menu in sync with the players clicking it: "Players playing" counts change
+        // as games start/finish, so once a second we rebuild every open menu.
+        if (tick.number % 20 == 0)
+            QueueEvents.refreshMapMenus()
 
         if (queue.size >= Configuration.queueMinPlayers) {
             val delay = currentStartDelay()
@@ -209,8 +249,8 @@ object QueueManager : Ticking {
         // below the world up - so nothing from a previous game ever survives the map reload.
         val margin = 8
         val playSize = maxOf(
-            Configuration.provider.getInt("modifiers.lava-rises.size", 50),
-            Configuration.provider.getInt("modifiers.tnt-falls.size", 50),
+            Configuration.provider.getInt("modifiers.lava-rises.size", 100),
+            Configuration.provider.getInt("modifiers.tnt-falls.size", 100),
         )
         val half = playSize / 2
         val spectator = map.spectatorSpawn
@@ -245,15 +285,15 @@ object QueueManager : Ticking {
         }
     }
 
-    // Removes leftover dropped items and TNT inside the wiped area, so a previous game's entities
-    // can't survive the map reload either.
+    // Removes every non-player entity inside the wiped area, so a previous game's dropped items,
+    // TNT, and mobs can't survive the map reload either.
     private fun clearEntities(world: World, bounds: MapBounds) {
         world.getEntities().forEach { entity ->
+            if (entity is Player) return@forEach
             val loc = entity.location
             if (loc.blockX !in bounds.minX..bounds.maxX || loc.blockY !in bounds.minY..bounds.maxY || loc.blockZ !in bounds.minZ..bounds.maxZ)
                 return@forEach
-            if (entity is Item || entity.type.name == "PRIMED_TNT" || entity.type.name == "TNT")
-                entity.remove()
+            entity.remove()
         }
     }
 
@@ -262,6 +302,13 @@ object QueueManager : Ticking {
         val counts = groupingBy { it }.eachCount()
         val max = counts.values.maxOrNull() ?: return default
         return counts.filterValues { it == max }.keys.random()
+    }
+
+    // Resolves a vote category: if the winner was the "Random" sentinel, an option is picked
+    // randomly instead of falling back to the configured default.
+    private fun <T> resolveVote(votes: List<T>, sentinel: T, options: List<T>, default: T): T {
+        val winner = votes.mostVoted(default)
+        return if (winner == sentinel) options.random() else winner
     }
 
     // Starts the game immediately with everyone currently queued, no matter the player count.
@@ -280,14 +327,23 @@ object QueueManager : Ticking {
         val players = MutableList(queue.size) { queue.removeFirst() }
         val votesList = players.mapNotNull { votes[it.uniqueId] }
 
-        val modeName = votesList.mapNotNull { it.mode }.mostVoted(Configuration.queueMode.gameInfo.namespace)
-        val typeName = votesList.mapNotNull { it.type }.mostVoted("normal")
-        val itemTime = votesList.mapNotNull { it.time }.mostVoted(Configuration.queueDefaultTime)
+        val modeName = resolveVote(votesList.mapNotNull { it.mode }, Vote.RANDOM, Registry.modes.keys.sorted(), Configuration.queueMode.gameInfo.namespace)
+        val typeName = resolveVote(votesList.mapNotNull { it.type }, Vote.RANDOM, Registry.modifiers.keys.sorted(), "normal")
+        val itemTime = resolveVote(votesList.mapNotNull { it.time }, Vote.RANDOM_TIME, TIME_OPTIONS, Configuration.queueDefaultTime)
 
         players.forEach { votes.remove(it.uniqueId) }
         val mode = Registry.modes[modeName] ?: Configuration.queueMode
 
-        val map = applyMapVote(players, votesList.mapNotNull { it.map }.mostVoted(arenaMap?.name ?: "-"))
+        val mapOptions = mapVoteCandidates().map { it.name }
+        val defaultMap = arenaMap?.name ?: "-"
+        val mapVotes = votesList.mapNotNull { it.map }
+        val votedMap = when {
+            // A "Random" vote wins: pick any candidate, or just keep the arena when no maps exist.
+            mapVotes.isNotEmpty() && mapVotes.mostVoted(defaultMap) == Vote.RANDOM -> mapOptions.randomOrNull() ?: defaultMap
+            else -> mapVotes.mostVoted(defaultMap)
+        }
+
+        val map = applyMapVote(players, votedMap)
 
         startGame(players, mode, typeName, itemTime, map)
     }
@@ -329,8 +385,8 @@ object QueueManager : Ticking {
             .getOrNull()
         if (world == null) {
             players.forEach {
-                it.sendMessage(component("Configured world \"$worldName\" does not exist, which means the game cannot start.", NamedTextColor.RED))
-                it.sendMessage(component("Please notify an admin of the server.", NamedTextColor.RED))
+                it.sendMessage(it.locale().component("queue.world_missing", worldName, color = NamedTextColor.RED))
+                it.sendMessage(it.locale().component("queue.world_missing.notify", color = NamedTextColor.RED))
             }
             return
         }

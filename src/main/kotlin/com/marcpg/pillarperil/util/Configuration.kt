@@ -26,7 +26,6 @@ object Configuration : Config(PaperConfigProvider()) {
 
     var platformHeight by double("platform-height", 200.0)
     var platformMaterial by custom("platform-material", PPEntryTypes.minecraftRegistry(org.bukkit.Registry.MATERIAL), Material.BEDROCK)
-    var maxFall by double("max-fall", 25.0)
     var platformDistanceFactor by double("platform-distance-factor", 10.0)
     var enableDraws by boolean("enable-draws")
     var endingCommands by custom("ending-commands", PPEntryTypes.placeholder.list, listOf())
@@ -38,7 +37,7 @@ object Configuration : Config(PaperConfigProvider()) {
 
     var queueEnabled by boolean("queue.enabled")
     var queueMinPlayers by int("queue.min-players", 2)
-    var queueMaxPlayers by int("queue.max-players", 8)
+    var queueMaxPlayers by int("queue.max-players", 100)
     var queueCheckIntervalSecs by int("queue.check-interval", 5)
     var queueStartDelay by int("queue.start-delay", 60)
     var queueStartDelayHalf by int("queue.start-delay-half", 30)
@@ -84,6 +83,14 @@ object Configuration : Config(PaperConfigProvider()) {
     var itemCleanupInterval by int("items.cleanup-interval", 120)
     var avoidHeldSlot by boolean("items.avoid-held-slot", true)
 
+    // Out-of-bounds radius around the map's spectator spawn. Players are free to leave, but beyond the
+    // radius they lose `radiusDamageHearts` hearts every second. Once the game time runs out without a
+    // winner, the radius starts shrinking by `radiusShrinkPerSecond` blocks per second until it closes in.
+    var radiusEnabled by boolean("radius.enabled", true)
+    var radiusBase by int("radius.base-radius", 25)
+    var radiusDamageHearts by double("radius.damage-hearts", 2.0)
+    var radiusShrinkPerSecond by double("radius.shrink-per-second", 1.0)
+
     // The void death height. Players below this y-coordinate die.
     val deathHeight get() = 0.0
 
@@ -98,7 +105,6 @@ object Configuration : Config(PaperConfigProvider()) {
         return if (spawnCord.y == -64.0) world.spawnLocation else spawnCord.toLocation(world)
     }
 
-    val queueCheckInterval get() = queueCheckIntervalSecs * 20
     fun queueLocation(world: World) = if (queueCord.y == -64.0) world.spawnLocation else queueCord.toLocation(world)
 
     fun init() {

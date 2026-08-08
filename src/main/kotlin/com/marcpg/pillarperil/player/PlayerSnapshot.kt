@@ -72,9 +72,8 @@ data class PlayerSnapshot(
             player.level = level
         }
 
-        if (restoreLocation)
-            player.teleport(location)
-
+        // The respawn point is restored regardless of online status, so a player who left mid-game
+        // won't keep respawning into the game world when they come back.
         if (restoreRespawnLocation)
             player.respawnLocation = respawnLocation
 
@@ -91,5 +90,10 @@ data class PlayerSnapshot(
             player.foodLevel = foodLevel
             player.saturation = saturation
         }
+
+        // Teleporting only works while the player is connected. When offline, everything else was
+        // already restored above, so they get moved once they rejoin (see PlayerEvents.onPlayerJoin).
+        if (restoreLocation && player.isOnline)
+            player.teleport(location)
     }
 }
