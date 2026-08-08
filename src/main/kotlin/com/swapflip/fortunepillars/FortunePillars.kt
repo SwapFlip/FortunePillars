@@ -84,7 +84,7 @@ class FortunePillars : JavaPlugin() {
         lateinit var PLUGIN: FortunePillars
         lateinit var LOG: PluginLogger
 
-        val VERSION: String = "0.2.2"
+        val VERSION: String = "0.1"
 
         fun sendCommand(cmd: String) {
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd)

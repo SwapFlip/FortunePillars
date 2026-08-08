@@ -5,7 +5,7 @@ name: FortunePillars
 description: Open-Source "Fortune Pillars"-style minigame — spawn on bedrock pillars, get random items, and dominate!
 
 ### Build Version ###
-version: 0.2.2
+version: 0.1
 
 ### Main Class ###
 main: com.swapflip.fortunepillars.FortunePillars

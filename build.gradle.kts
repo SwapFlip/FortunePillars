@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.swapflip.fortunepillars"
-version = "0.2.2"
+version = "0.1"
 description = "Open-Source & customizable \"Pillars of Fortune\"-like game — spawn on bedrock pillars, get random items, and dominate!"
 
 versionCatalogUpdate {
