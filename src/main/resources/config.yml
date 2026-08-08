@@ -6,8 +6,8 @@
 # #_________________|_|   |_|_|_|\__,_|_|  |_|   \___|_|  |_|_|_________________# #
 # #                                Configuration                                # #
 # #                                                                             # #
-# #       SOURCE-CODE:   https://github.com/MarcPG1905/PillarPeril              # #
-# #       BUGS & ISSUES: https://github.com/MarcPG1905/PillarPeril/issues       # #
+# #       SOURCE-CODE:   https://github.com/SwapFlip/FortunePillars                     # #
+# #       BUGS & ISSUES: https://github.com/SwapFlip/FortunePillars/issues              # #
 # #                                                                             # #
 # ############################################################################### #
 
@@ -126,7 +126,7 @@ queue:
   #     | -> '{id}'       : started game's ID
   #     | -> '{mode}'     : started game's game-mode
   #     | -> '{players}'  : amount of players in the started game
-  world: PillarPeril
+  world: FortunePillars
 
   # The location to start the game at.
   # If the y-component is set to -64.0, the game will start at the world spawn.
@@ -252,7 +252,7 @@ items:
 #   | -> '<kills>'  : your current kill count
 # If you leave the lines list empty, the built-in default scoreboard will be used instead.
 scoreboard:
-  title: "<bold><gradient:#71CCF8:#FC91EC:#F87171>Pillar Peril"
+  title: "<bold><gradient:#71CCF8:#FC91EC:#F87171>Fortune Pillars"
   lines:
     - "<gray>Mode: <white><mode>"
     - "<gray>Type: <white><type>"

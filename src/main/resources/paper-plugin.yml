@@ -1,30 +1,30 @@
 ### Plugin Name ###
-name: PillarPeril
+name: FortunePillars
 
 ### Plugin Description ###
-description: Open-Source & customizable "Pillars of Fortune"-like game — spawn on bedrock pillars, get random items, and dominate!
+description: Open-Source "Fortune Pillars"-style minigame — spawn on bedrock pillars, get random items, and dominate!
 
 ### Build Version ###
 version: 0.2.2
 
 ### Main Class ###
-main: com.marcpg.pillarperil.PillarPeril
+main: com.swapflip.fortunepillars.FortunePillars
 
 ### Loader Class ###
-loader: com.marcpg.pillarperil.PPLoader
+loader: com.swapflip.fortunepillars.FortunePillarsLoader
 
 ### PaperAPI Version ###
 api-version: '1.20'
 
 ### Developers of the Plugin ###
 authors:
-  - MarcPG
+  - SwapFlip
 
 ### Plugin Website ###
-website: https://github.com/MarcPG1905/PillarPeril
+website: https://github.com/SwapFlip/FortunePillars
 
 ### Logging Prefix ###
-prefix: PP
+prefix: FP
 
 ### Soft Dependencies ###
 dependencies:
@@ -36,6 +36,6 @@ dependencies:
 
 ### Permissions ###
 permissions:
-  pillarperil.forcestart:
-    description: Allows force starting a Pillar Peril game.
+  fortunepillars.forcestart:
+    description: Allows force starting a Fortune Pillars game.
     default: op

@@ -1,10 +1,10 @@
-# Minigame Best-Practices Research — PillarPeril (Scoreboard, Item Drops, Death, Game State, Polish)
+# Minigame Best-Practices Research — Fortune Pillars (Scoreboard, Item Drops, Death, Game State, Polish)
 
-Research of how popular Bukkit/Paper minigame plugins (BedWars1058, MBedwars, aSkyWars, SkywarsReloaded, BedWars2023) and Hypixel handle the five existing PillarPeril systems. Each section: current behavior → findings (with URLs) → actionable improvements.
+Research of how popular Bukkit/Paper minigame plugins (BedWars1058, MBedwars, aSkyWars, SkywarsReloaded, BedWars2023) and Hypixel handle the five existing Fortune Pillars systems. Each section: current behavior → findings (with URLs) → actionable improvements.
 
 ## 1. Scoreboard
 
-**Current (PillarPeril):** One per-player `SimpleScoreboard` (libpg) created in `PillarPlayer.init` via `game.scoreboard?.invoke(this)`; entries show mode/name/time/kills. A separate `SimpleActionBar` + Adventure `BossBar` show the item countdown (`Game.kt:155-170`).
+**Current (Fortune Pillars):** One per-player `SimpleScoreboard` (libpg) created in `PillarPlayer.init` via `game.scoreboard?.invoke(this)`; entries show mode/name/time/kills. A separate `SimpleActionBar` + Adventure `BossBar` show the item countdown (`Game.kt:155-170`).
 
 **Findings:**
 - BedWars1058 scoreboard re-write spec: packet-based, async task; config `title-refresh-interval: 2` ticks, `placeholders-refresh-interval: 20` ticks, `task-type: async`. Separate sidebars per game state (`lobby`, `waiting`, `starting`, `playing`, `restarting`) **and per player type** (`sidebar.Default.playing.eliminated` vs `sidebar.Default.playing` for active players). Ending-phase sidebar shows the winner team. Placeholders `{teamStatus}`, `{teamName}`, `{teamColor}`, `{teamLetter}`.
@@ -56,7 +56,7 @@ Research of how popular Bukkit/Paper minigame plugins (BedWars1058, MBedwars, aS
 
 **Actionable improvements:**
 1. Add last-hit tracking: `PillarPlayer.lastHit: Pair<Player, Long>?` set in an `EntityDamageByEntityEvent` listener (record damager + timestamp; refresh on every hit). Death credit logic: `killer != null` → killer; else if cause is `VOID` (15s window) or `FALL`/`SUFFOCATION` (10s window) → last-hit damager; else no credit. (BedWars `LastHit` + DeepWiki windows.)
-2. Knock-off credit: `PLAYER_PUSH` — because PillarPeril has no PvP damage, record *velocity-induced* last-hit from any damage event so knock-offs into the void get credited.
+2. Knock-off credit: `PLAYER_PUSH` — because Fortune Pillars has no PvP damage, record *velocity-induced* last-hit from any damage event so knock-offs into the void get credited.
 3. Arrow kills: use `projectile.shooter` when killer is null (bedwars `PLAYER_SHOOT`).
 4. Elimination announcement: victim gets title `ELIMINATED` (10 40 10) + low `GHAST_WARN`; killer gets actionbar `+1 Kill` + `ENTITY_EXPERIENCE_ORB_PICKUP` (BedWars kill sound). Play killer feedback in `onPostPlayerDeath` (after death screen), per BedWars event split.
 5. Multi-kill chain: if same killer scores 2 kills within ~5s → `DOUBLE KILL!` title (aSkyWars pattern).

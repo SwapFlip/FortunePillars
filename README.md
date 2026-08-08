@@ -1,12 +1,12 @@
-# Pillar Peril
+# Fortune Pillars
 
-**Pillar Peril** in an **open-source Minecraft minigame** where players **spawn on bedrock pillars**, get **random items** every few seconds, and fight to be the last one standing.
+**Fortune Pillars** is an **open-source Minecraft minigame** built and maintained **by SwapFlip**, where players **spawn on bedrock pillars**, get **random items** every few seconds, and fight to be the last one standing.
 
 **Highly configurable** modes and **lightweight performance** make it perfect for small and medium servers.
 
 ## Special about this Version
 
-The special part about this plugin is the high *customizability* and *a bunch of different modes*!    
+The special part about this plugin is the high *customizability* and *a bunch of different modes*!
 Here are the different modes that are available, with each of them being fully customizable:
 
 | Name           | Cooldown | Time | Pillars  | Description                                         |
@@ -21,7 +21,7 @@ Here are the different modes that are available, with each of them being fully c
 
 ## Inspiration
 
-This plugin is inspired by pillar-style minigames featured by creators like [CheapPickle](https://youtube.com/@CheapPickle) and large servers such as [CubeCraft](https://www.cubecraft.net/). This plugin is independent, open-source, and not affiliated with those projects.
+This plugin is inspired by pillar-style minigames featured by creators like [CheapPickle](https://youtube.com/@CheapPickle) and large servers such as [CubeCraft](https://www.cubecraft.net/), and is a maintained continuation of the open-source [Pillar Peril](https://github.com/MarcPG1905/PillarPeril) plugin. It is independent, open-source, and not affiliated with those projects.
 
 ## Commands
 
@@ -52,7 +52,7 @@ See **Commands** section above for the `/pp-config` command to modify the config
 
 The configuration is designed to be simple and ships with comments, which explain themselves.
 
-By default, the queue is disabled, so it needs to manually be enabled.  
+By default, the queue is disabled, so it needs to manually be enabled.
 There are two queue modes: `command` (players use /queue) and `auto` (players are automatically queued).
 
 ## Translations
@@ -64,7 +64,7 @@ Translations are auto-downloaded from our translation server; if the server is n
 <details>
 <summary>Info about Metrics collected</summary>
 
-PillarPeril by default collects some data about how people use the plugin, so game modes can better be adjusted and the game can further be balanced.
+Fortune Pillars by default collects some data about how people use the plugin, so game modes can better be adjusted and the game can further be balanced.
 
 This is a complete list of all data collected, besides [FastStats](https://faststats.dev/) defaults:
 
@@ -77,9 +77,8 @@ If you do not want to send any of these metrics, you can set `disable-faststats`
 
 ## Releases & Contact
 
-You can find our official releases on these platforms:
+You can find the official releases of **Fortune Pillars** on:
 
-**Recommended:** [Modrinth](https://modrinth.com/plugin/pillarperil) — [GitHub](https://github.com/MarcPG1905/PillarPeril/releases)  
-**Other:** [SpigotMC](https://www.spigotmc.org/resources/pillar-peril.119457) — [Hangar](https://hangar.papermc.io/MarcPG1905/PillarPeril)
+**Recommended:** [GitHub Releases](https://github.com/SwapFlip/FortunePillars/releases)
 
-**Contact:** Join our community on [Discord](https://discord.gg/HvWhqY3kRG), message me on Discord (`@marcpg1905`) or email me at [marcpg@proton.me](mailto:marcpg@proton.me).
+For questions, bug reports or feature requests, open an issue on [GitHub](https://github.com/SwapFlip/FortunePillars/issues) or reach out to **SwapFlip**.

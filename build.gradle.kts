@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.versionCatalogueUpdate)
 }
 
-group = "com.marcpg.pillarperil"
+group = "com.swapflip.fortunepillars"
 version = "0.2.2"
 description = "Open-Source & customizable \"Pillars of Fortune\"-like game — spawn on bedrock pillars, get random items, and dominate!"
 

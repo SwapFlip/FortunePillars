@@ -1,0 +1,37 @@
+package com.swapflip.fortunepillars.generation.horizontal
+
+import com.swapflip.fortunepillars.game.Game
+import com.swapflip.fortunepillars.generation.HorGenCompanion
+import com.swapflip.fortunepillars.generation.HorizontalGen
+import org.bukkit.Location
+
+class RandomHorGen(game: Game) : HorizontalGen(game) {
+    companion object : HorGenCompanion<RandomHorGen> {
+        override val namespace: String = "random"
+
+        override fun constructGen(game: Game): RandomHorGen = RandomHorGen(game)
+    }
+
+    val players = game.players.size
+
+    override fun generate(): List<Location> {
+        game.radius *= 1.2
+
+        val candidates = mutableSetOf<Location>()
+        for (x in -game.radius.toInt()..<game.radius.toInt()) {
+            for (z in -game.radius.toInt()..<game.radius.toInt()) {
+                val loc = game.center.clone().add(x.toDouble(), 0.0, z.toDouble())
+                if (game.center.distance(loc) <= game.radius)
+                    candidates += loc
+            }
+        }
+
+        val locations = mutableListOf<Location>()
+        (0..<players).forEach { _ ->
+            val loc = candidates.random()
+            candidates -= loc
+            locations += location(loc.x, loc.z)
+        }
+        return locations
+    }
+}
