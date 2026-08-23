@@ -41,10 +41,12 @@ object MapManager {
             BlockPos(x, y, z)
         }.toMutableList()
 
-        // Strip duplicate spawns and (0,0,0) placeholders (created when spawn N was set before
-        // spawns 1..N-1), so maps can never put multiple players into the same cage.
-        val spawnCounts = spawns.groupingBy { it }.eachCount()
-        spawns.removeAll { it == BlockPos(0, 0, 0) || (spawnCounts[it] ?: 0) > 1 }
+        // Strip (0,0,0) placeholders (created when spawn N was set before spawns 1..N-1) and
+        // de-duplicate, keeping ONE copy of each real spawn. A typo'd duplicate like "[A, A, B]"
+        // must shrink capacity by one, not silently drop both A's.
+        spawns.removeAll { it == BlockPos(0, 0, 0) }
+        val seen = mutableSetOf<BlockPos>()
+        spawns.removeAll { !seen.add(it) }
 
         val spectator = yaml.getIntegerList("spectator-spawn").let { if (it.size == 3) BlockPos(it[0], it[1], it[2]) else null }
         val deathHeight = if (yaml.contains("death-height")) yaml.getInt("death-height") else null

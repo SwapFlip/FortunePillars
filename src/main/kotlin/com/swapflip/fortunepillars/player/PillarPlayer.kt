@@ -138,16 +138,17 @@ class PillarPlayer(player: Player, val game: Game, initialSnapshot: PlayerSnapsh
                 item.type in rareItems -> player.playSoundSafe(Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 2.0f)
             }
 
-            // Items always land in the next available main inventory slot — never the offhand or armor.
-            // `storageContents` is used instead of `contents`, since the latter can also include the
-            // armor and offhand slots on player inventories. Ghost amount-0 stacks count as free.
-            val contents = player.inventory.storageContents
+            // Track occupied slots against a live local copy of the inventory: storageContents is a
+            // snapshot, so without updating it here a multi-item drop would keep finding the same
+            // "free" slot and overwrite the previous item. (dropCount is 1 today, but the multi-item
+            // path is intended and must be correct.)
+            val slots = player.inventory.storageContents.copyOf()
             val heldSlot = player.inventory.heldItemSlot
 
             // First merge into a partially filled stack of the same item, so small stacks grow
             // instead of being scattered across empty slots.
             if (item.maxStackSize > 1) {
-                val partial = contents.firstOrNull { it != null && it.type == item.type && it.amount > 0 && it.amount < it.maxStackSize }
+                val partial = slots.firstOrNull { it != null && it.type == item.type && it.amount > 0 && it.amount < it.maxStackSize }
                 if (partial != null) {
                     val add = minOf(item.amount, partial.maxStackSize - partial.amount)
                     partial.amount += add
@@ -156,10 +157,11 @@ class PillarPlayer(player: Player, val game: Game, initialSnapshot: PlayerSnapsh
             }
 
             if (item.amount > 0) {
-                val nextSlot = contents.indices.firstOrNull { i ->
-                    (i != heldSlot || !Configuration.avoidHeldSlot) && (contents[i] == null || contents[i]!!.amount <= 0 || contents[i]!!.type == Material.AIR)
+                val nextSlot = slots.indices.firstOrNull { i ->
+                    (i != heldSlot || !Configuration.avoidHeldSlot) && (slots[i] == null || slots[i]!!.amount <= 0 || slots[i]!!.type == Material.AIR)
                 }
                 if (nextSlot != null) {
+                    slots[nextSlot] = item
                     player.inventory.setItem(nextSlot, item)
                 } else {
                     player.world.dropItemNaturally(player.location, item)

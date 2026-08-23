@@ -73,8 +73,9 @@ class UhcModifier(game: Game) : GameModifier(game) {
     }
 
     override fun onEnd() {
-        // The original value is restored centrally by Game.cleanup(); this is only the UHC-off
-        // revert for worlds where no other game re-enabled it.
-        game.world.setGameRuleSafe("NATURAL_REGENERATION", "NATURAL_HEALTH_REGENERATION", true)
+        // Do NOT re-enable natural regeneration here. Game.cleanup() restores the gamerule to the
+        // value it saved at game start (savedNaturalRegen) once the world has no other active games.
+        // Re-enabling unconditionally would wrongly turn regen back on for a concurrent game still
+        // running on the same world.
     }
 }

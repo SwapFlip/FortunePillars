@@ -663,7 +663,7 @@ object QueueManager : Ticking {
         players.forEach { QueueScoreboards.hide(it) }
 
         Cage.clearAll(players)
-        Cage.clearTowers()
+        Cage.clearTowers(queue)
 
         Configuration.queuePreCommands.forEach { FortunePillars.sendCommand(it(placeholders)) }
 

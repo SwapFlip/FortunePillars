@@ -466,7 +466,8 @@ object Commands {
             if (Configuration.provider.approximatePathType(path) != ConfigValueType.LIST)
                 return send(sender, locale.component("config.not_list", path, color = NamedTextColor.RED))
 
-            val list = Configuration.provider.getList(path)!!.toMutableList()
+            val list = Configuration.provider.getList(path)?.toMutableList()
+                ?: return send(sender, locale.component("config.not_list", path, color = NamedTextColor.RED))
             if (!add && value !in list)
                 return send(sender, locale.component("config.remove.not_containing", value, path, color = NamedTextColor.RED))
 

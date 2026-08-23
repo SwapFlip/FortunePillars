@@ -30,16 +30,22 @@ object Cage {
     private val gameCages = mutableListOf<Block>()
     // O(1) protection lookups on block-break/place events, kept in sync with the lists above.
     // Without it, every protected-block check flattened every cage list into a new collection.
-    private val protectedBlocks = HashSet<Block>()
+    // Bukkit's CraftBlock does not override equals()/hashCode(): two Block instances for the same
+    // coordinates are never equal, so keying protection on Block identity made isProtected() ALWAYS
+    // return false - a complete cage-protection bypass (players could mine/place out of cages, and
+    // TNT/fire could destroy them). Key on the coordinate Location instead.
+    private val protectedBlocks = HashSet<Location>()
+
+    private fun Block.toKey() = Location(world, x.toDouble(), y.toDouble(), z.toDouble())
 
     private fun registerBlocks(blocks: List<Block>) {
-        protectedBlocks += blocks
+        protectedBlocks += blocks.map { it.toKey() }
     }
 
     private fun unregisterBlocks(blocks: List<Block>?) {
         blocks?.forEach {
             it.type = Material.AIR
-            protectedBlocks -= it
+            protectedBlocks -= it.toKey()
         }
     }
 
@@ -173,7 +179,7 @@ object Cage {
         return placed
     }
 
-    fun isProtected(block: Block): Boolean = block in protectedBlocks
+    fun isProtected(block: Block): Boolean = block.toKey() in protectedBlocks
 
     private fun buildCage(feet: Location): List<Block> {
         val origin = feet.block
@@ -228,11 +234,14 @@ object Cage {
         }
     }
 
-    fun clearTowers() {
-        cages.values.forEach(::unregisterBlocks)
-        towers.values.forEach(::unregisterBlocks)
-        cages.clear()
-        towers.clear()
+    // Only clears cage/tower blocks for players who are no longer queued. A game start that drains
+    // the queue down to queueMaxPlayers leaves any overflow players still queued, and blanket-clearing
+    // would strand them (their tower turns to air and drops them). The game's own players were already
+    // cleared by clearAll().
+    fun clearTowers(preserve: Collection<Player> = emptyList()) {
+        val keep = preserve.mapTo(mutableSetOf()) { it.uniqueId }
+        cages.keys.minus(keep).forEach { uuid -> unregisterBlocks(cages.remove(uuid)) }
+        towers.keys.minus(keep).forEach { uuid -> unregisterBlocks(towers.remove(uuid)) }
     }
 
     fun clearAll(players: Collection<Player>) = players.forEach(::clear)

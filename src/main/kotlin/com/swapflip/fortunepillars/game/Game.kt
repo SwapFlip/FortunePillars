@@ -505,6 +505,26 @@ abstract class Game(
             return
         }
 
+        // Wipe the target volume (and any entities in it) before pasting, so a manual start on a
+        // world with leftover blocks/mobs doesn't paste the arena on top of old terrain. Mirrors the
+        // queue path's pasteMapUnchecked clearing.
+        val minX = map.origin.x
+        val minY = map.origin.y
+        val minZ = map.origin.z
+        val maxX = map.origin.x + schematic.width
+        val maxY = map.origin.y + schematic.height
+        val maxZ = map.origin.z + schematic.length
+        for (x in minX..maxX) for (y in minY..maxY) for (z in minZ..maxZ) {
+            val block = world.getBlockAt(x, y, z)
+            if (block.type != Material.AIR) block.setType(Material.AIR, false)
+        }
+        world.getEntities().forEach { entity ->
+            if (entity is Player) return@forEach
+            val loc = entity.location
+            if (loc.blockX in minX..maxX && loc.blockY in minY..maxY && loc.blockZ in minZ..maxZ)
+                entity.remove()
+        }
+
         arenaBounds = MapPaster.paste(schematic, world, map.origin)
         cagePlayersOnMap(map)
     }
