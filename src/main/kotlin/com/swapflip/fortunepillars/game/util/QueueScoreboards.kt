@@ -1,7 +1,7 @@
 package com.swapflip.fortunepillars.game.util
 
 import com.marcpg.libpg.display.SimpleScoreboard
-import com.marcpg.libpg.display.SimpleScoreboardEntry
+import com.marcpg.libpg.display.ScoreboardEntry
 import com.marcpg.libpg.display.receiver
 import com.marcpg.libpg.display.start
 import com.marcpg.libpg.lang.string
@@ -32,6 +32,28 @@ object QueueScoreboards {
     )
 
     private val boards = mutableMapOf<UUID, SimpleScoreboard>()
+
+    // Vote tallies are global and only change when someone votes, yet `resolve` runs once per
+    // placeholder per board update. Recomputing the four tallies on every placeholder is wasteful,
+    // so we recompute them at most once per server tick and reuse the result for the rest of it.
+    private var cachedTime: Map<Int, Int>? = null
+    private var cachedMode: Map<String, Int>? = null
+    private var cachedType: Map<String, Int>? = null
+    private var cachedMap: Map<String, Int>? = null
+    private var cachedTick: Int = -1
+
+    // Recomputes the four vote tallies at most once per server tick. `Bukkit.getCurrentTick()` is
+    // stable within a single board update (all placeholders share it) and changes between updates,
+    // so the cached maps are reused for every placeholder of every player in a given tick.
+    private fun refreshVoteCache() {
+        val tick = Bukkit.getCurrentTick()
+        if (tick == cachedTick) return
+        cachedTime = QueueManager.timeVoteCounts()
+        cachedMode = QueueManager.modeVoteCounts()
+        cachedType = QueueManager.typeVoteCounts()
+        cachedMap = QueueManager.mapVoteCounts()
+        cachedTick = tick
+    }
 
     fun show(player: Player) {
         if (!Configuration.queueScoreboardEnabled) return
@@ -65,54 +87,57 @@ object QueueScoreboards {
 
     // The built-in queue scoreboard, used when `queue-scoreboard.lines` is empty. Localized per
     // viewer; values are rebuilt on every update cycle.
-    private fun defaultEntries(player: Player): List<SimpleScoreboardEntry> = listOf(
-        SimpleScoreboardEntry { locale ->
-            mini("<gray>${locale.string("scoreboard.queue.players")}: <white>${QueueManager.queue.size}<gray>/<white>${Configuration.queueMinPlayers}")
+    private fun defaultEntries(player: Player): List<ScoreboardEntry> = listOf(
+        ScoreboardTemplates.CachedEntry { p ->
+            mini("<gray>${p.locale().string("scoreboard.queue.players")}: <white>${QueueManager.queue.size}<gray>/<white>${Configuration.queueMinPlayers}")
         },
-        SimpleScoreboardEntry { locale ->
-            mini("<gray>${locale.string("scoreboard.queue.status")}: ").append(statusComponent(locale))
+        ScoreboardTemplates.CachedEntry { p ->
+            mini("<gray>${p.locale().string("scoreboard.queue.status")}: ").append(statusComponent(p.locale()))
         },
-        SimpleScoreboardEntry { locale ->
-            mini("<gray>${locale.string("scoreboard.queue.map")}: <white>").append(Component.text(currentMapName(locale)))
+        ScoreboardTemplates.CachedEntry { p ->
+            mini("<gray>${p.locale().string("scoreboard.queue.map")}: <white>").append(Component.text(currentMapName(p.locale())))
         },
-        SimpleScoreboardEntry { locale ->
-            mini("<gray>${locale.string("scoreboard.queue.top-mode")}: <white>${topMode(locale)}")
+        ScoreboardTemplates.CachedEntry { p ->
+            mini("<gray>${p.locale().string("scoreboard.queue.top-mode")}: <white>${topMode(p.locale())}")
         },
-        SimpleScoreboardEntry { locale ->
-            mini("<gray>${locale.string("scoreboard.queue.top-map")}: <white>${topMap(locale)}")
+        ScoreboardTemplates.CachedEntry { p ->
+            mini("<gray>${p.locale().string("scoreboard.queue.top-map")}: <white>${topMap(p.locale())}")
         },
-        SimpleScoreboardEntry { locale ->
-            mini("<gray>${locale.string("scoreboard.queue.online")}: <white>${Bukkit.getOnlinePlayers().size}")
+        ScoreboardTemplates.CachedEntry { p ->
+            mini("<gray>${p.locale().string("scoreboard.queue.online")}: <white>${Bukkit.getOnlinePlayers().size}")
         },
     )
 
     // Resolves one <placeholder> of the queue scoreboard on every update. Vote placeholders fall
     // back to what would actually be used when nobody voted: the configured default mode, the
     // plain modifier, the default item time and the currently pasted arena.
-    private fun resolve(key: String, player: Player, locale: Locale): String = when (key) {
-        "players" -> QueueManager.queue.size.toString()
-        "min" -> Configuration.queueMinPlayers.toString()
-        "max" -> Configuration.queueMaxPlayers.toString()
-        "needed" -> (Configuration.queueMinPlayers - QueueManager.queue.size).coerceAtLeast(0).toString()
-        "slots-left" -> (Configuration.queueMaxPlayers - QueueManager.queue.size).coerceAtLeast(0).toString()
-        "countdown" -> QueueManager.countdownSecondsLeft?.toString() ?: "-"
-        "status" -> MINI_MESSAGE.serialize(statusComponent(locale))
-        "map" -> currentMapName(locale)
-        "mode-vote" -> topMode(locale)
-        "type-vote" -> topType(locale)
-        "time-vote" -> QueueManager.timeVoteCounts().filterKeys { it != Int.MIN_VALUE }.maxWithOrNull(compareBy({ it.value }, { it.key }))
-            ?.takeIf { it.value > 0 }?.let { "${it.key}s" } ?: "${Configuration.queueDefaultTime}s"
-        "map-vote" -> topMap(locale)
-        "map-votes" -> QueueManager.mapVoteCounts().filterKeys { it != QueueManager.Vote.RANDOM }
-            .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }
-            ?.let { (map, n) -> "${MapManager.maps[map]?.displayName ?: map} ($n)" } ?: "-"
-        "votes-cast" -> QueueManager.votesCast().toString()
-        "online" -> Bukkit.getOnlinePlayers().size.toString()
-        "games" -> GameManager.games.size.toString()
-        "player" -> player.name.escapeTags()
-        "world" -> Cage.queueWorldName ?: "-"
-        "clock" -> ScoreboardTemplates.clock()
-        else -> ""
+    private fun resolve(key: String, player: Player, locale: Locale): String {
+        refreshVoteCache()
+        return when (key) {
+            "players" -> QueueManager.queue.size.toString()
+            "min" -> Configuration.queueMinPlayers.toString()
+            "max" -> Configuration.queueMaxPlayers.toString()
+            "needed" -> (Configuration.queueMinPlayers - QueueManager.queue.size).coerceAtLeast(0).toString()
+            "slots-left" -> (Configuration.queueMaxPlayers - QueueManager.queue.size).coerceAtLeast(0).toString()
+            "countdown" -> QueueManager.countdownSecondsLeft?.toString() ?: "-"
+            "status" -> MINI_MESSAGE.serialize(statusComponent(locale))
+            "map" -> currentMapName(locale)
+            "mode-vote" -> topMode(locale)
+            "type-vote" -> topType(locale)
+            "time-vote" -> (cachedTime ?: QueueManager.timeVoteCounts()).filterKeys { it != Int.MIN_VALUE }.maxWithOrNull(compareBy({ it.value }, { it.key }))
+                ?.takeIf { it.value > 0 }?.let { "${it.key}s" } ?: "${Configuration.queueDefaultTime}s"
+            "map-vote" -> topMap(locale)
+            "map-votes" -> (cachedMap ?: QueueManager.mapVoteCounts()).filterKeys { it != QueueManager.Vote.RANDOM }
+                .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }
+                ?.let { (map, n) -> "${MapManager.maps[map]?.displayName ?: map} ($n)" } ?: "-"
+            "votes-cast" -> QueueManager.votesCast().toString()
+            "online" -> Bukkit.getOnlinePlayers().size.toString()
+            "games" -> GameManager.games.size.toString()
+            "player" -> player.name.escapeTags()
+            "world" -> Cage.queueWorldName ?: "-"
+            "clock" -> ScoreboardTemplates.clock()
+            else -> ""
+        }
     }
 
     // "Waiting for players..." while below the minimum, a live countdown once it fills - and a
@@ -135,21 +160,21 @@ object QueueScoreboards {
     // fall back to what a start right now would actually use - the configured default mode, the
     // plain modifier and the currently pasted arena.
     private fun topMode(locale: Locale): String {
-        val best = QueueManager.modeVoteCounts().filterKeys { it != QueueManager.Vote.RANDOM }
+        val best = (cachedMode ?: QueueManager.modeVoteCounts()).filterKeys { it != QueueManager.Vote.RANDOM }
             .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }?.key
             ?: return Configuration.queueMode.gameInfo.name(locale)
         return Registry.modes[best]?.gameInfo?.name(locale) ?: best
     }
 
     private fun topType(locale: Locale): String {
-        val best = QueueManager.typeVoteCounts().filterKeys { it != QueueManager.Vote.RANDOM }
+        val best = (cachedType ?: QueueManager.typeVoteCounts()).filterKeys { it != QueueManager.Vote.RANDOM }
             .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }?.key
             ?: return locale.string("modifier.normal.name")
         return if (best == "multi") locale.string("modifier.multi.name") else locale.string("modifier.$best.name")
     }
 
     private fun topMap(locale: Locale): String {
-        val best = QueueManager.mapVoteCounts().filterKeys { it != QueueManager.Vote.RANDOM }
+        val best = (cachedMap ?: QueueManager.mapVoteCounts()).filterKeys { it != QueueManager.Vote.RANDOM }
             .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }?.key
             ?: return currentMapName(locale)
         return MapManager.maps[best]?.let { it.displayName ?: it.name } ?: best

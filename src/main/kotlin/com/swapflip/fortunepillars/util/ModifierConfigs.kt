@@ -51,20 +51,20 @@ object ModifierConfigs {
     // and finally to the supplied default. This three-tier chain means a missing file/key never
     // breaks a modifier - it just uses the next source down.
     fun int(modifier: String, key: String, default: Int): Int =
-        provider(modifier)?.getInt(key, Configuration.provider.getInt("modifiers.$modifier.$key", default))
-            ?: Configuration.provider.getInt("modifiers.$modifier.$key", default)
+        provider(modifier)?.getInt(key, Configuration.provider.getInt(ConfigPaths.modifier(modifier, key), default))
+            ?: Configuration.provider.getInt(ConfigPaths.modifier(modifier, key), default)
 
     fun bool(modifier: String, key: String, default: Boolean): Boolean =
-        provider(modifier)?.getBoolean(key, Configuration.provider.getBoolean("modifiers.$modifier.$key", default))
-            ?: Configuration.provider.getBoolean("modifiers.$modifier.$key", default)
+        provider(modifier)?.getBoolean(key, Configuration.provider.getBoolean(ConfigPaths.modifier(modifier, key), default))
+            ?: Configuration.provider.getBoolean(ConfigPaths.modifier(modifier, key), default)
 
     fun double(modifier: String, key: String, default: Double): Double =
-        provider(modifier)?.getDouble(key, Configuration.provider.getDouble("modifiers.$modifier.$key", default))
-            ?: Configuration.provider.getDouble("modifiers.$modifier.$key", default)
+        provider(modifier)?.getDouble(key, Configuration.provider.getDouble(ConfigPaths.modifier(modifier, key), default))
+            ?: Configuration.provider.getDouble(ConfigPaths.modifier(modifier, key), default)
 
     fun string(modifier: String, key: String, default: String): String =
-        provider(modifier)?.getString(key, Configuration.provider.getString("modifiers.$modifier.$key", default))
-            ?: Configuration.provider.getString("modifiers.$modifier.$key", default)
+        provider(modifier)?.getString(key, Configuration.provider.getString(ConfigPaths.modifier(modifier, key), default))
+            ?: Configuration.provider.getString(ConfigPaths.modifier(modifier, key), default)
 
     // Whether a modifier file (or its config.yml section) defines any keys at all. Used by modifiers
     // that want to detect "fully custom" config vs. the built-in defaults.

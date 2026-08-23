@@ -9,9 +9,9 @@ import com.swapflip.fortunepillars.game.ModifierCompanion
 import com.swapflip.fortunepillars.game.util.GameModifierInfo
 import com.swapflip.fortunepillars.util.ModifierConfigs
 import com.swapflip.fortunepillars.util.Ticking
+import com.swapflip.fortunepillars.util.inModifierWindow
 import com.swapflip.fortunepillars.util.playSoundSafe
 import net.kyori.adventure.text.format.NamedTextColor
-import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Sound
 import org.bukkit.entity.Entity
@@ -50,11 +50,11 @@ class MobWaveModifier(game: Game) : GameModifier(game), Listener {
     override fun init() {
         alive.clear()
         fallImmune.clear()
-        Bukkit.getPluginManager().registerEvents(this, FortunePillars.PLUGIN)
+        game.registerListener(this)
     }
 
     override fun tick(tick: Ticking.Tick) {
-        if (!tick.isInInterval(game.anchorTick() + startDelaySecs * 20, intervalSecs * 20)) return
+        if (!tick.inModifierWindow(game.anchorTick(), startDelaySecs, intervalSecs)) return
 
         // Drop whatever died on its own so the cap reflects reality.
         alive.removeIf { !it.isValid || it.isDead }
@@ -103,5 +103,12 @@ class MobWaveModifier(game: Game) : GameModifier(game), Listener {
         alive.filter { it.isValid }.forEach { it.remove() }
         alive.clear()
         fallImmune.clear()
+    }
+
+    // Defensive cleanup for when a game is abandoned without a normal end() (which calls onEnd()).
+    // Unregisters this modifier's event listeners so they don't leak if the game is force-stopped
+    // in a way that skips onEnd().
+    fun shutdown() {
+        HandlerList.unregisterAll(this)
     }
 }

@@ -42,6 +42,8 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
+enum class GamePhase { WAITING, COUNTDOWN, RUNNING, CELEBRATING, ENDED }
+
 abstract class Game(
     val id: String,
     center: Location,
@@ -258,6 +260,32 @@ abstract class Game(
 
     var ending = false
 
+    // The current high-level phase of the game, derived from the underlying state flags.
+    val phase: GamePhase
+        get() = when {
+            ending -> GamePhase.ENDED
+            celebrating -> GamePhase.CELEBRATING
+            started -> GamePhase.RUNNING
+            else -> GamePhase.COUNTDOWN
+        }
+
+    // Centralized listener registry so cleanup() can unregister every event listener this game
+    // registered, instead of leaking handlers that fire into a dead game.
+    private val registeredListeners = mutableSetOf<org.bukkit.event.Listener>()
+
+    fun registerListener(l: org.bukkit.event.Listener) {
+        org.bukkit.Bukkit.getPluginManager().registerEvents(l, com.swapflip.fortunepillars.FortunePillars.PLUGIN)
+        registeredListeners += l
+    }
+
+    // Centralized scheduled-task registry so cleanup() can cancel every task this game scheduled,
+    // instead of leaving delayed callbacks firing into a dead game.
+    private val scheduledTasks = mutableSetOf<org.bukkit.scheduler.BukkitTask>()
+
+    fun runLater(ticks: Long, block: () -> Unit): org.bukkit.scheduler.BukkitTask =
+        org.bukkit.Bukkit.getScheduler().runTaskLater(com.swapflip.fortunepillars.FortunePillars.PLUGIN, block, ticks)
+            .also { scheduledTasks += it }
+
     // ================= DISPLAY METHODS =================
 
     // Placeholders usable in `scoreboard.lines`. Parsed against this exact set, so real
@@ -298,6 +326,11 @@ abstract class Game(
         )
     }
 
+    // The "leader" placeholder is recomputed for every scoreboard line each tick: cache it once
+    // per tick so only the first line's resolution does the scan, the rest reuse the result.
+    private var cachedLeaderTick: Int = -1
+    private var cachedLeader: PillarPlayer? = null
+
     // Resolves one <placeholder> of the in-game scoreboard on every update. Player-controlled
     // text (names) is escaped so it can never be interpreted as MiniMessage markup.
     private fun resolveScoreboardValue(key: String, p: PillarPlayer, locale: Locale): String = when (key) {
@@ -314,8 +347,14 @@ abstract class Game(
         "eliminated" -> (initialPlayers.size - players.size).toString()
         "online" -> Bukkit.getOnlinePlayers().size.toString()
         "id" -> id
-        "leader" -> initialPlayers.filter { it.kills > 0 }.maxByOrNull { it.kills }
-            ?.let { "${it.name().escapeTags()} (${it.kills})" } ?: "-"
+        "leader" -> {
+            val tick = Bukkit.getCurrentTick()
+            if (tick != cachedLeaderTick) {
+                cachedLeaderTick = tick
+                cachedLeader = initialPlayers.filter { it.kills > 0 }.maxByOrNull { it.kills }
+            }
+            cachedLeader?.let { "${it.name().escapeTags()} (${it.kills})" } ?: "-"
+        }
         "started" -> initialPlayers.size.toString()
         "world" -> world.name
         "coords" -> "${p.player.location.blockX}, ${p.player.location.blockY}, ${p.player.location.blockZ}"
@@ -906,6 +945,7 @@ abstract class Game(
     // Activates every modifier that at least one player voted for. The order follows the registry
     // so the match always gets deterministic modifier ordering (e.g. lava always before UHC).
     private fun activateMultiSelection() {
+        if (ending || started || multiSelectionDone) return
         val selected = multiSelections.values.flatten().toSet()
         modifiers = Registry.modifiers
             .filter { it.key in selected }
@@ -1132,13 +1172,23 @@ abstract class Game(
         // into the freshly-reset arena.
         runCatching { Cage.clearGameCages() }
         runCatching { buildings.reset() }
+        // Authoritative arena re-paste on the dedicated queue world: when this is the last game
+        // still using the world, re-paste the current arena so the next round starts from a pristine
+        // schematic rather than relying solely on the change-tracking reset above. Guarded so a
+        // failure can never break cleanup - the change-tracking reset is the real safety net.
+        if (Configuration.arenaResetRePaste
+            && world.name == Cage.queueWorldName
+            && (worldUsers[world] ?: 0) <= 1) {
+            runCatching { QueueManager.rePasteCurrentArena() }
+                .onFailure { org.bukkit.Bukkit.getLogger().warning("Arena re-paste failed; relying on change-tracking reset.") }
+        }
         bossBar?.stop()
         // The barrier cylinder sits outside the arena wipe radius, so it removes its own blocks
         // (in batches, so the end of a match never spikes the server).
         runCatching { border?.remove() }
         // A failing modifier teardown (e.g. a chunk-snapshot scan) must not abort the cleanup and
         // strand the players in the game world.
-        modifiers.forEach { m -> runCatching { m.onEnd() }.onFailure { error("Could not stop the ${m.info.namespace} modifier.", it) } }
+        modifiers.sortedByDescending { it.teardownOrder }.forEach { m -> runCatching { m.onEnd() }.onFailure { error("Could not stop the ${m.info.namespace} modifier.", it) } }
         // Restore the world settings captured at init, after the modifiers had their say. Only the
         // last game still using this world restores them, so concurrent games don't clobber each
         // other's settings.
@@ -1160,5 +1210,12 @@ abstract class Game(
         // over into the next game. Shared admin worlds are skipped so unrelated mobs survive.
         if (world.name == Cage.queueWorldName)
             runCatching { world.getEntities().forEach { if (it !is Player) it.remove() } }
+
+        // Unregister every event listener this game registered, so handlers never fire into a dead
+        // game (mirrors the listener registry added alongside this).
+        registeredListeners.forEach { org.bukkit.event.HandlerList.unregisterAll(it) }
+        // Cancel every scheduled task this game scheduled, so delayed callbacks never run after the
+        // game ended (mirrors the task registry added alongside this).
+        scheduledTasks.forEach { it.cancel() }
     }
 }

@@ -9,6 +9,7 @@ import com.swapflip.fortunepillars.game.util.GameModifierInfo
 import com.swapflip.fortunepillars.map.BlockPos
 import com.swapflip.fortunepillars.util.ModifierConfigs
 import com.swapflip.fortunepillars.util.Ticking
+import com.swapflip.fortunepillars.util.inModifierWindow
 import com.swapflip.fortunepillars.util.playSoundSafe
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
@@ -133,7 +134,7 @@ class RisingLavaModifier(game: Game) : GameModifier(game) {
         // Wait for the configured start delay before the lava begins to rise. From then on the
         // surface rises one block every item cycle + `interval-extra` seconds (3->5, 5->7, 10->12,
         // 15->17), so the pace of the match always stays in sync with how fast items are dropping.
-        if (!tick.isInInterval(game.anchorTick() + startDelaySecs * 20, ((game.itemCountdown() + intervalExtraSecs) * 20).toInt())) return
+        if (!tick.inModifierWindow(game.anchorTick(), startDelaySecs, (game.itemCountdown() + intervalExtraSecs).toInt())) return
 
         lavaY++
         // Rise all the way to the top of the play area (the world height limit is far above the

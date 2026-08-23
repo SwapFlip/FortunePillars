@@ -18,3 +18,8 @@ interface Ticking {
         }
     }
 }
+
+// Convenience wrapper for the common "fire every <interval> seconds starting <delay> seconds after
+// the game anchor" pattern used by modifiers. Keeps the *20 (ticks-per-second) math in one place.
+fun Ticking.Tick.inModifierWindow(anchorTick: Int, startDelaySecs: Int, intervalSecs: Int) =
+    isInInterval(anchorTick + startDelaySecs * 20, intervalSecs * 20)

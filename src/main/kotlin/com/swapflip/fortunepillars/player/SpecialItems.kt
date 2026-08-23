@@ -7,6 +7,7 @@ import com.swapflip.fortunepillars.util.ModeConfigs
 import com.swapflip.fortunepillars.util.enchantment
 import com.swapflip.fortunepillars.util.potionEffectType
 import com.swapflip.fortunepillars.util.potionType
+import com.swapflip.fortunepillars.util.WeightedBag
 import com.swapflip.fortunepillars.util.setPotionTypeSafe
 import net.kyori.adventure.text.format.TextColor
 import org.bukkit.Material
@@ -283,24 +284,12 @@ object SpecialItems {
     private data class PotionEntry(val type: PotionType) : PoolEntry
 
     private fun weightedPick(entries: List<Pair<PoolEntry, Int>>): PoolEntry? {
-        val total = entries.sumOf { it.second }
-        if (total <= 0) return null
-        var roll = (1..total).random()
-        for ((entry, weight) in entries) {
-            roll -= weight
-            if (roll <= 0) return entry
-        }
-        return entries.lastOrNull()?.first
+        if (entries.isEmpty()) return null
+        return WeightedBag(entries.toMap()).random()
     }
 
     private fun weightedSpecialPick(entries: Collection<ConfigSpecial>): ConfigSpecial? {
-        val total = entries.sumOf { it.weight }
-        if (total <= 0) return null
-        var roll = (1..total).random()
-        for (entry in entries) {
-            roll -= entry.weight
-            if (roll <= 0) return entry
-        }
-        return entries.lastOrNull()
+        if (entries.isEmpty()) return null
+        return WeightedBag(entries.associateWith { it.weight }).random()
     }
 }

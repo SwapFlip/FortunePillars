@@ -2,6 +2,7 @@ package com.swapflip.fortunepillars.util
 
 import com.swapflip.fortunepillars.FortunePillars
 import org.bukkit.Bukkit
+import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Particle
 import org.bukkit.entity.Player
@@ -24,13 +25,14 @@ object Cosmetics {
     // are warmed into it on join), so this never touches disk on the hot path.
     fun tick() {
         for (player in Bukkit.getOnlinePlayers()) {
+            if (player.gameMode == GameMode.SPECTATOR) continue
             val data = PlayerStats.cached(player.uniqueId) ?: continue
             val id = data.activeCosmetic
             if (id.isBlank() || id == "none") continue
             if (id !in data.cosmetics) continue
             val trail = TRAILS[id] ?: continue
-            val loc = player.location.clone().add(0.0, 1.0, 0.0)
-            player.world.spawnParticle(trail.particle, loc, 1, 0.15, 0.15, 0.15, 0.0)
+            val loc = player.location
+            player.world.spawnParticle(trail.particle, loc.x, loc.y + 1.0, loc.z, 1, 0.15, 0.15, 0.15, 0.0)
         }
     }
 

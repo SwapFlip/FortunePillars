@@ -90,6 +90,12 @@ object QueueManager : Ticking {
     // Read-only view of the currently pasted queue arena, used by the queue scoreboard.
     fun currentArenaMap(): ArenaMap? = arenaMap
 
+    // Re-pastes the currently loaded queue arena. Used by Game.cleanup() for an authoritative
+    // arena reset on the dedicated queue world; no-op when no arena is currently loaded.
+    fun rePasteCurrentArena() {
+        arenaMap?.let { pasteMapUnchecked(it) }
+    }
+
     // Whether the last game start failed: the queue scoreboard shows a distinct status for it.
     val isStartFailed: Boolean get() = startFailed
 

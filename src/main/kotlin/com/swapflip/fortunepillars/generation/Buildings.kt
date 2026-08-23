@@ -38,10 +38,14 @@ class Buildings(
     }
 
     fun registerPlace(location: Location, data: BlockData = location.block.blockData) {
-        if (location !in initialBlocks) {
-            initialBlocks[location.clone()] = data
+        // A Location used as a map key must be orientation-independent: zero pitch/yaw so a caller
+        // passing a player-eye location (which carries look angles) can't create duplicate keys for
+        // the same block.
+        val key = location.clone().apply { pitch = 0f; yaw = 0f }
+        if (key !in initialBlocks) {
+            initialBlocks[key] = data
 
-            val distance = location.distance(game.center)
+            val distance = key.distance(game.center)
             if (distance > placedRadius)
                 placedRadius = distance
         }

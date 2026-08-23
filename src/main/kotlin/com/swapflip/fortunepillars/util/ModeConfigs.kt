@@ -94,16 +94,16 @@ object ModeConfigs {
         provider(mode)?.getBoolean(path, default) ?: default
 
     private fun legacyString(mode: String, path: String, default: String): String =
-        Configuration.provider.getString("modes.$mode.$path", default)
+        Configuration.provider.getString(ConfigPaths.modeLegacy(mode, path), default)
 
     private fun legacyInt(mode: String, path: String, default: Int): Int =
-        Configuration.provider.getInt("modes.$mode.$path", default)
+        Configuration.provider.getInt(ConfigPaths.modeLegacy(mode, path), default)
 
     private fun legacyLong(mode: String, path: String, default: Long): Long =
-        Configuration.provider.getLong("modes.$mode.$path", default)
+        Configuration.provider.getLong(ConfigPaths.modeLegacy(mode, path), default)
 
     private fun legacyBool(mode: String, path: String, default: Boolean): Boolean =
-        Configuration.provider.getBoolean("modes.$mode.$path", default)
+        Configuration.provider.getBoolean(ConfigPaths.modeLegacy(mode, path), default)
 
     // ── Mode behavior ────────────────────────────────────────────────────────────────────────
 

@@ -94,7 +94,12 @@ object Cage {
         return runCatching {
             // Structures off: the queue world is a void lobby, so village/shipwreck generation
             // would only waste time and disk space on a world nobody explores.
-            WorldCreator(name).generator(VoidChunkGenerator()).generateStructures(false).createWorld()
+            // keepSpawnInMemory(false): the lobby is never visited by a live game, so keeping its
+            // spawn chunk resident only wastes memory.
+            // setAutoSave(false): the void lobby is regenerated each start, so persisting it to disk
+            // only wastes writes and can resurrect a stale world on restart.
+            WorldCreator(name).generator(VoidChunkGenerator()).generateStructures(false)
+                .keepSpawnInMemory(false).createWorld()?.apply { setAutoSave(false) }
         }.onFailure {
             FortunePillars.LOG.error("Could not create queue world \"$name\".", it)
         }.getOrNull()

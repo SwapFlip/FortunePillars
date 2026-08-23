@@ -8,6 +8,7 @@ import com.swapflip.fortunepillars.game.ModifierCompanion
 import com.swapflip.fortunepillars.game.util.GameModifierInfo
 import com.swapflip.fortunepillars.util.ModifierConfigs
 import com.swapflip.fortunepillars.util.Ticking
+import com.swapflip.fortunepillars.util.inModifierWindow
 import com.swapflip.fortunepillars.util.enchantment
 import com.swapflip.fortunepillars.util.escapeTags
 import com.swapflip.fortunepillars.util.playSoundSafe
@@ -45,16 +46,16 @@ class LightningModifier(game: Game) : GameModifier(game) {
         val now = Bukkit.getCurrentTick()
 
         // Arm the first strike once the modifier enters its interval window.
-        if (nextStrike == 0 && tick.isInInterval(game.anchorTick() + startDelaySecs * 20, intervalSecs * 20))
+        if (nextStrike == 0 && tick.inModifierWindow(game.anchorTick(), startDelaySecs, intervalSecs))
             nextStrike = now + (0..10).random() * 20
         if (nextStrike == 0 || now < nextStrike) return
         // Re-arm the next strike after the configured interval plus a random 0-10s jitter.
         nextStrike = now + intervalSecs * 20 + (0..10).random() * 20
 
-        // Only strike players who would survive the hit: someone whose health is too low to take
-        // the damage is skipped, so the lightning can never be the killing blow. If nobody is
-        // healthy enough right now, the strike is skipped entirely.
-        val target = game.players.filter { it.player.isOnline && it.player.health > damage }.randomOrNull() ?: return
+        // Only strike players who are still alive: the strike deals `damage` (which may be lethal
+        // if configured high enough), so a player at or below 0 health is skipped. If nobody is
+        // alive right now, the strike is skipped entirely.
+        val target = game.players.filter { it.player.isOnline && it.player.health > 0 }.randomOrNull() ?: return
         game.world.strikeLightningEffect(target.player.location)
         // LIGHTNING kills must never credit an unrelated last-damager: clear the kill-credit
         // window first, so if the strike finishes the player nobody gets the kill for it.

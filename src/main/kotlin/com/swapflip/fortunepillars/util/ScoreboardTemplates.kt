@@ -1,9 +1,11 @@
 package com.swapflip.fortunepillars.util
 
+import com.marcpg.libpg.display.MinecraftReceiver
 import com.marcpg.libpg.display.ScoreboardEntry
 import com.marcpg.libpg.display.SimpleScoreboard
 import io.papermc.paper.scoreboard.numbers.NumberFormat
 import net.kyori.adventure.text.Component
+import org.bukkit.entity.Player
 import java.util.Locale
 
 // Shared engine for config-driven scoreboard lines. A line like "<gray>Kills: <white><kills>"
@@ -57,6 +59,8 @@ object ScoreboardTemplates {
         private val showNumbers: Boolean,
         private val resolve: (Locale, String) -> String,
     ) : ScoreboardEntry() {
+        private var last: Component? = null
+
         override fun init(index: Int, board: SimpleScoreboard) {
             super.init(index, board)
             if (!showNumbers)
@@ -64,7 +68,23 @@ object ScoreboardTemplates {
         }
 
         override fun update(board: SimpleScoreboard) {
-            score.customName(render(template) { key -> resolve(board.receiver.locale(), key) })
+            val next = render(template) { key -> resolve(board.receiver.locale(), key) }
+            if (next == last) return
+            last = next
+            score.customName(next)
+        }
+    }
+
+    // A sidebar line whose content is produced by `build(player)` on every update. Like TemplateEntry
+    // it skips the customName write when the rendered component is unchanged, so static or
+    // slowly-changing lines don't churn the scoreboard packet each tick.
+    class CachedEntry(private val produce: (MinecraftReceiver) -> Component) : ScoreboardEntry() {
+        private var last: Component? = null
+        override fun update(board: SimpleScoreboard) {
+            val next = produce(board.receiver)
+            if (next == last) return
+            last = next
+            score.customName(next)
         }
     }
 }

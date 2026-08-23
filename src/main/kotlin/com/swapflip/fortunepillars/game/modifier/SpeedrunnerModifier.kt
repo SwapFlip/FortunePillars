@@ -4,6 +4,8 @@ import com.swapflip.fortunepillars.game.Game
 import com.swapflip.fortunepillars.game.GameModifier
 import com.swapflip.fortunepillars.game.ModifierCompanion
 import com.swapflip.fortunepillars.game.util.GameModifierInfo
+import com.swapflip.fortunepillars.player.Kit
+import com.swapflip.fortunepillars.player.applyKit
 import com.swapflip.fortunepillars.util.potionEffectType
 import org.bukkit.Material
 import org.bukkit.inventory.ItemStack
@@ -25,14 +27,18 @@ class SpeedrunnerModifier(game: Game) : GameModifier(game) {
         // Permanent Speed I: infinite duration (no particles, no icon clutter), applied once at
         // init - nothing during the match clears potion effects afterwards.
         val speed = potionEffectType("SPEED", "SWIFTNESS")
-        game.players.forEach { p ->
-            if (speed != null)
-                p.player.addPotionEffect(PotionEffect(speed, PotionEffect.INFINITE_DURATION, 0, false, false, false))
-
-            p.player.inventory.addItem(ItemStack(Material.OAK_PLANKS, 32))
-            p.player.inventory.helmet = ItemStack(Material.GOLDEN_HELMET)
-            p.player.inventory.chestplate = ItemStack(Material.LEATHER_CHESTPLATE)
-            p.player.inventory.boots = ItemStack(Material.IRON_BOOTS)
-        }
+        val kit = Kit(
+            add = listOf(ItemStack(Material.OAK_PLANKS, 32)),
+            slots = mapOf(
+                39 to ItemStack(Material.GOLDEN_HELMET),
+                38 to ItemStack(Material.LEATHER_CHESTPLATE),
+                36 to ItemStack(Material.IRON_BOOTS),
+            ),
+            potionEffects = if (speed != null)
+                listOf(PotionEffect(speed, PotionEffect.INFINITE_DURATION, 0, false, false, false))
+            else
+                emptyList(),
+        )
+        game.players.forEach { p -> p.applyKit(kit) }
     }
 }

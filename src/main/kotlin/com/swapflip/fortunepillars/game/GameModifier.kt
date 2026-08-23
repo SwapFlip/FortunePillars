@@ -10,6 +10,11 @@ abstract class GameModifier(
 ) : Ticking {
     abstract val info: GameModifierInfo
 
+    // Teardown ordering for Game.cleanup: modifiers with a higher value are torn down first.
+    // Default 0 means no special ordering. Override when teardown order matters (e.g. a modifier
+    // whose cleanup must run before another's to avoid clobbering restored blocks).
+    open val teardownOrder: Int get() = 0
+
     open fun init() {}
     open fun customBuild() {}
     override fun tick(tick: Ticking.Tick) {}

@@ -66,14 +66,12 @@ object SchematicSaver {
             .put("Metadata", CompoundBinaryTag.empty())
             .build()
 
-        // The block scan above must run on the main thread (world access), but the gzip write is
-        // pure I/O: a multi-megabyte file would otherwise stall the tick loop, so it goes async.
-        // A failed write is logged; the command handler still reports the selection as saved, since
-        // the schematic data itself was captured successfully.
-        Bukkit.getScheduler().runTaskAsynchronously(FortunePillars.PLUGIN, Runnable {
-            runCatching { BinaryTagIO.writer().write(nbt, file.toPath(), BinaryTagIO.Compression.GZIP) }
-                .onFailure { FortunePillars.LOG.warn("[Schematic] Failed to write \"${file.name}\": ${it.message}") }
-        })
+        // The block scan above runs on the main thread (world access). The gzip write is pure I/O,
+        // but it must complete before we report success: a failed write now returns null so the
+        // command handler reports the TRUE outcome instead of claiming a save that never hit disk.
+        runCatching { BinaryTagIO.writer().write(nbt, file.toPath(), BinaryTagIO.Compression.GZIP) }
+            .onFailure { FortunePillars.LOG.warn("[Schematic] Failed to write \"${file.name}\": ${it.message}") }
+            .getOrNull() ?: return@runCatching null
         SavedSchematic(width, height, length, blocks.size)
     }.getOrNull()
 }

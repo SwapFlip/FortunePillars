@@ -7,6 +7,7 @@ import com.marcpg.libpg.util.toLocation
 import com.swapflip.fortunepillars.FortunePillars
 import com.swapflip.fortunepillars.Registry
 import com.swapflip.fortunepillars.game.mode.NormalGame
+import com.swapflip.fortunepillars.game.util.GameManager
 import org.bukkit.*
 
 object Configuration : Config(PaperConfigProvider()) {
@@ -89,17 +90,17 @@ object Configuration : Config(PaperConfigProvider()) {
     // Custom modifier names and descriptions shown in the vote menu. Supports full MiniMessage
     // formatting. Keys are the modifier namespace (e.g. "lava-rises", "speedrun").
     // When empty, the locale strings are used as fallback.
-    val modifierCustomNames: Map<String, String> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection("modifiers-customization.custom-names")?.getValues(false) ?: emptyMap())
+    val modifierCustomNames: Map<String, String> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection(ConfigPaths.MODIFIERS_CUSTOM_NAMES)?.getValues(false) ?: emptyMap())
         .mapNotNull { (name, value) -> (value as? String)?.takeIf { it.isNotEmpty() }?.let { name to it } }
         .toMap()
 
-    val modifierCustomDescriptions: Map<String, String> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection("modifiers-customization.custom-descriptions")?.getValues(false) ?: emptyMap())
+    val modifierCustomDescriptions: Map<String, String> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection(ConfigPaths.MODIFIERS_CUSTOM_DESCRIPTIONS)?.getValues(false) ?: emptyMap())
         .mapNotNull { (name, value) -> (value as? String)?.takeIf { it.isNotEmpty() }?.let { name to it } }
         .toMap()
 
     // Custom map menu item materials. Keys are map names, values are material names.
     // Overrides the default SLIME_BALL (leader) / FIRE_CHARGE (others) in the map menu.
-    val mapCustomMaterials: Map<String, String> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection("maps-customization.custom-materials")?.getValues(false) ?: emptyMap())
+    val mapCustomMaterials: Map<String, String> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection(ConfigPaths.MAPS_CUSTOM_MATERIALS)?.getValues(false) ?: emptyMap())
         .mapNotNull { (name, value) -> (value as? String)?.takeIf { it.isNotEmpty() }?.let { name to it } }
         .toMap()
 
@@ -185,12 +186,16 @@ object Configuration : Config(PaperConfigProvider()) {
     var borderBottomOffset by int("border.bottom-offset", 40)
     var borderTopOffset by int("border.top-offset", 60)
 
+    // Whether the arena is re-pasted on reset (rebuilds the platforms/blocks rather than reusing
+    // the previous game's world state). On by default; disabling keeps the prior layout.
+    var arenaResetRePaste by boolean("arena.reset-repaste", true)
+
     // The void death height. Players below this y-coordinate die.
     var deathHeight by int("death-height", 0)
 
     // The weighted item pool: material name -> weight. A higher weight means a higher chance of getting the item.
     // If the pool is empty, every non-blacklisted material is given an equal chance instead.
-    val itemsPool: Map<String, Int> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection("items.pool")?.getValues(false) ?: emptyMap())
+    val itemsPool: Map<String, Int> get() = ((provider as? PaperConfigProvider)?.configuration?.getConfigurationSection(ConfigPaths.ITEMS_POOL)?.getValues(false) ?: emptyMap())
         .mapNotNull { (name, value) -> (value as? Int)?.takeIf { it > 0 }?.let { name to it } }
         .toMap()
 
@@ -248,6 +253,10 @@ object Configuration : Config(PaperConfigProvider()) {
     // config.yml in place without restarting (or without even running /pp-config reload).
     fun checkAutoReload() {
         if (!autoReload) return
+        // Never reload mid-game: a reload can change deathHeight/borderRadius under running players,
+        // which would teleport or kill them unpredictably. The poll timer keeps running; changes
+        // made to config.yml while a game is active are picked up on the next poll after it ends.
+        if (GameManager.games.isNotEmpty()) return
         val file = provider.path.toFile()
         if (!file.exists()) return
         val modified = file.lastModified()
@@ -312,17 +321,17 @@ object Configuration : Config(PaperConfigProvider()) {
     // Returns every material the given mode is barred from dropping, on top of the global
     // `items.blacklist`. Reads `modes.<namespace>.blacklist` live, so it picks up reloads.
     fun modeBlacklist(namespace: String): Set<Material> =
-        provider.getStringList("modes.$namespace.blacklist")
+        provider.getStringList(ConfigPaths.modeBlacklist(namespace))
             ?.mapNotNull { Material.matchMaterial(it) }?.toSet()
             ?: emptySet()
 
     // ===== Rewards & leaderboards (Phase 3 progression) =====
     // Vault payout to each winner, in economy units. 0 disables the payout.
-    val rewardWinAmount: Double get() = provider.getDouble("rewards.win-amount", 0.0)
+    val rewardWinAmount: Double get() = provider.getDouble(ConfigPaths.REWARDS_WIN_AMOUNT, 0.0)
     // Console commands run for each winner; %player% is replaced with the winner's name. Empty = none.
-    val rewardWinCommands: List<String> get() = provider.getStringList("rewards.win-commands") ?: emptyList()
+    val rewardWinCommands: List<String> get() = provider.getStringList(ConfigPaths.REWARDS_WIN_COMMANDS) ?: emptyList()
     // How many entries the /pp top boards show.
-    val leaderboardSize: Int get() = provider.getInt("leaderboard.size", 10).coerceAtLeast(1)
+    val leaderboardSize: Int get() = provider.getInt(ConfigPaths.LEADERBOARD_SIZE, 10).coerceAtLeast(1)
 }
 
 object PPEntryTypes {
