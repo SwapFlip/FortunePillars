@@ -202,7 +202,7 @@ class PillarPlayer(player: Player, val game: Game, initialSnapshot: PlayerSnapsh
                 // Re-check online status when the task fires, not just when it was scheduled: a
                 // player who disconnected right after the game won't get re-queued while offline.
                 if (player.isOnline)
-                    QueueManager.add(player)
+                    QueueManager.joinMap(player, "")
             } // Wait 3 seconds before rejoining queue.
     }
 

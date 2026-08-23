@@ -37,6 +37,16 @@ import java.util.Locale
 import java.util.UUID
 
 object Commands {
+    // All players currently waiting across every per-map queue. Replaces the old single global
+    // `QueueManager.queue` collection with the new per-map-queue API.
+    private fun allQueuedPlayers(): List<Player> =
+        QueueManager.availableMaps().mapNotNull { QueueManager.queueForMap(it.name) }.flatMap { it.players }
+
+    // Default map for callers that used to add a player to the single global queue without naming a
+    // map (e.g. COMMAND-join fallback, admin add). Picks the first available map, or "" to let
+    // QueueManager fall back to the player's last map / AUTO default.
+    private fun defaultQueueMap(): String = QueueManager.availableMaps().firstOrNull()?.name ?: ""
+
     internal interface PluginCommand : CommandExecutor, TabCompleter
 
     private class WrappedCommand(
@@ -101,7 +111,7 @@ object Commands {
 
                     // Queued players are waiting in the plugin world - starting them in another
                     // game would leave them double-booked in the queue.
-                    if (players.any { it in QueueManager.queue })
+                    if (players.any { QueueManager.currentQueueOf(it) != null })
                         return send(sender, locale.component("games.start.player_in_queue", color = NamedTextColor.RED))
 
                     if (mode !in Registry.modes)
@@ -230,12 +240,12 @@ object Commands {
                     if (sender !is Player || Configuration.queueMethod != QueueMethod.COMMAND)
                         return false
 
-                    if (sender in QueueManager.queue)
+                    if (QueueManager.currentQueueOf(sender) != null)
                         return send(sender, locale.component("queue.join.already", color = NamedTextColor.YELLOW))
 
                     // Pick the arena before joining: the map menu places the player into the queue on selection.
                     if (!QueueEvents.openMapMenu(sender)) {
-                        QueueManager.add(sender)
+                        QueueManager.joinMap(sender, defaultQueueMap())
                         send(sender, locale.component("queue.join.success", color = NamedTextColor.GREEN))
                     }
                     true
@@ -244,10 +254,10 @@ object Commands {
                     if (sender !is Player || Configuration.queueMethod != QueueMethod.COMMAND)
                         return false
 
-                    if (sender !in QueueManager.queue)
+                    if (QueueManager.currentQueueOf(sender) == null)
                         return send(sender, locale.component("queue.leave.not_queued", color = NamedTextColor.RED))
 
-                    QueueManager.remove(sender)
+                    QueueManager.leaveQueue(sender)
                     send(sender, locale.component("queue.leave.success", color = NamedTextColor.YELLOW))
                 }
                 "admin" -> {
@@ -256,11 +266,11 @@ object Commands {
 
                     when (args.getOrNull(1)) {
                         "list" -> {
-                            if (QueueManager.queue.isEmpty())
+                            if (allQueuedPlayers().isEmpty())
                                 return send(sender, locale.component("queue.list.empty", color = NamedTextColor.GREEN))
 
-                            send(sender, locale.component("queue.list.list", QueueManager.queue.size.toString(), color = NamedTextColor.GREEN))
-                            for (player in QueueManager.queue)
+                            send(sender, locale.component("queue.list.list", allQueuedPlayers().size.toString(), color = NamedTextColor.GREEN))
+                            for (player in allQueuedPlayers())
                                 sender.sendMessage(component("| - ", NamedTextColor.GRAY).append(player.displayName().color(NamedTextColor.WHITE)))
                             true
                         }
@@ -273,7 +283,7 @@ object Commands {
                             if (unresolved.isNotEmpty())
                                 sender.sendMessage(sender.locale().component("queue.add.unresolved", unresolved.joinToString(", "), color = NamedTextColor.RED))
 
-                            val inQueue = players.filter { it in QueueManager.queue }
+                            val inQueue = players.filter { QueueManager.currentQueueOf(it) != null }
 
                             if (args[1] == "add") {
                                 if (players.isEmpty())
@@ -282,28 +292,28 @@ object Commands {
                                 if (inQueue.size == players.size && players.isNotEmpty())
                                     return send(sender, locale.component("queue.add.already", color = NamedTextColor.YELLOW))
 
-                                players.forEach { QueueManager.add(it) }
+                                players.forEach { QueueManager.joinMap(it, defaultQueueMap()) }
                                 send(sender, locale.component("queue.add.success", color = NamedTextColor.GREEN))
                             } else {
                                 if (inQueue.isEmpty())
                                     return send(sender, locale.component("queue.remove.not_queued", color = NamedTextColor.RED))
 
-                                inQueue.forEach { QueueManager.remove(it) }
+                                inQueue.forEach { QueueManager.leaveQueue(it) }
                                 send(sender, locale.component("queue.remove.success", color = NamedTextColor.YELLOW))
                             }
                         }
                         "clear" -> {
-                            if (QueueManager.queue.isEmpty())
+                            if (allQueuedPlayers().isEmpty())
                                 return send(sender, locale.component("queue.clear.empty", color = NamedTextColor.YELLOW))
 
-                            QueueManager.queue.toList().forEach { QueueManager.remove(it) }
+                            allQueuedPlayers().forEach { QueueManager.leaveQueue(it) }
                             send(sender, locale.component("queue.clear.success", color = NamedTextColor.YELLOW))
                         }
                         else -> false
                     }
                 }
                 else -> {
-                    sender.sendMessage(locale.chatComponent("commands.queue.status", QueueManager.queue.size.toString(), Configuration.queueMinPlayers.toString(), Configuration.queueMode.gameInfo.namespace))
+                    sender.sendMessage(locale.chatComponent("commands.queue.status", allQueuedPlayers().size.toString(), Configuration.queueMinPlayers.toString(), Configuration.queueMode.gameInfo.namespace))
                     true
                 }
             }
@@ -345,7 +355,7 @@ object Commands {
 
                     // Teleporting a participant would eliminate them from a running match or
                     // break their queue state - map viewers must be free of both.
-                    if (GameManager.isInGame(sender, onlyAlive = false) || sender in QueueManager.queue)
+                    if (GameManager.isInGame(sender, onlyAlive = false) || QueueManager.currentQueueOf(sender) != null)
                         return send(sender, locale.component("pof.spectate.in_game", color = NamedTextColor.RED))
 
                     val world = Bukkit.getWorld(arenaMap.world)
@@ -711,10 +721,10 @@ object Commands {
                     if (!sender.isOp && !sender.hasPermission("fortunepillars.forcestart"))
                         return noPermission(sender)
 
-                    if (QueueManager.queue.isEmpty())
+                    if (allQueuedPlayers().isEmpty())
                         return send(sender, locale.component("queue.forcestart.empty", color = NamedTextColor.RED))
 
-                    val count = QueueManager.queue.size
+                    val count = allQueuedPlayers().size
                     QueueManager.forceStart()
                     send(sender, locale.component("queue.forcestart.success", count.toString(), color = NamedTextColor.GREEN))
                 }
@@ -722,12 +732,12 @@ object Commands {
                     if (sender !is Player)
                         return false
 
-                    val inQueue = sender in QueueManager.queue
+                    val inQueue = QueueManager.currentQueueOf(sender) != null
                     val pillar = GameManager.player(sender, onlyAlive = false)
 
                     when {
                         inQueue -> {
-                            QueueManager.remove(sender)
+                            QueueManager.leaveQueue(sender)
                             send(sender, locale.component("queue.leave.success", color = NamedTextColor.YELLOW))
                         }
                         pillar != null -> {

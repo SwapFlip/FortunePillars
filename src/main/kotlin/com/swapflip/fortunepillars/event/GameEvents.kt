@@ -59,7 +59,7 @@ object GameEvents : Listener {
         // /mvtp into a plugin world (e.g. to check the lobby) actually stays put.
         if (tick.number % 20 == 0) {
             Bukkit.getOnlinePlayers().forEach { p ->
-                if (Cage.isPluginWorld(p.world) && p !in QueueManager.queue && !SpectatorManager.isSpectating(p) && GameManager.player(p, onlyAlive = false) == null && !(p.isOp || p.hasPermission("fortunepillars.bypass")))
+                if (Cage.isPluginWorld(p.world) && QueueManager.currentQueueOf(p) == null && !SpectatorManager.isSpectating(p) && GameManager.player(p, onlyAlive = false) == null && !(p.isOp || p.hasPermission("fortunepillars.bypass")))
                     runCatching { p.teleport(Configuration.getLobbySpawn()) }
                         .onFailure { FortunePillars.LOG.warn("Could not teleport stranded player ${p.name} back to the lobby.", it) }
             }

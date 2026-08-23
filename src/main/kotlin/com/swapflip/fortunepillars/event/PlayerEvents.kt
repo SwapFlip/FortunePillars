@@ -312,13 +312,13 @@ object PlayerEvents : Listener {
         // Warm this player's stats into the cache so cosmetics/leaderboards read memory, not disk.
         PlayerStats.get(player.uniqueId)
         when (Configuration.queueMethod) {
-            QueueMethod.AUTO -> bukkitRunLater(20L) { if (player.isOnline) QueueManager.add(player) } // Wait 1 second before rejoining queue.
+            QueueMethod.AUTO -> bukkitRunLater(20L) { if (player.isOnline) QueueManager.joinMap(player, "") } // Wait 1 second before rejoining queue.
 
             // Players who left mid-game (or whose game ended while they were offline) get their snapshot
             // restored on rejoin, so they never spawn back into the FortunePillars game world.
             QueueMethod.COMMAND -> bukkitRunLater(5L) {
                 if (!player.isOnline) return@bukkitRunLater
-                if (player in QueueManager.queue || GameManager.isInGame(player, onlyAlive = false)) return@bukkitRunLater
+                if (QueueManager.currentQueueOf(player) != null || GameManager.isInGame(player, onlyAlive = false)) return@bukkitRunLater
 
                 val stillInGame = GameManager.player(player, onlyAlive = false)
                 if (stillInGame != null) {
@@ -352,7 +352,7 @@ object PlayerEvents : Listener {
     fun onPlayerQuit(event: PlayerQuitEvent) {
         val player = event.player
         SpectatorManager.stop(player)
-        QueueManager.remove(player)
+        QueueManager.leaveQueue(player)
 
         // Restore the pre-game state for anyone who was part of a game, alive or eliminated, so a
         // mid-game quit never leaves a dangling respawn point inside the game world.
@@ -377,8 +377,8 @@ object PlayerEvents : Listener {
 
         // Leaving the queue world while queued means leaving the queue - no ghost queuing from
         // anywhere else on the server.
-        if (player in QueueManager.queue && Cage.isPluginWorld(event.from) && !Cage.isPluginWorld(player.world)) {
-            QueueManager.remove(player)
+        if (QueueManager.currentQueueOf(player) != null && Cage.isPluginWorld(event.from) && !Cage.isPluginWorld(player.world)) {
+        QueueManager.leaveQueue(player)
             player.sendMessage(player.locale().chatComponent("queue.leave.world"))
         }
 

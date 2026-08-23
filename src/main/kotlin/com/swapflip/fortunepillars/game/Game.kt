@@ -450,7 +450,7 @@ abstract class Game(
         bukkitPlayers
             .map { PillarPlayer(it, this, QueueManager.consumeJoinSnapshot(it)) }
             .onEach {
-                QueueManager.remove(it.player)
+                QueueManager.leaveQueue(it.player)
 
                 // Close any open inventory first, so an item held on the cursor drops into the
                 // inventory and gets wiped with it instead of being smuggled into the game.
@@ -1143,7 +1143,7 @@ abstract class Game(
                     // them out of the queue arena when the delayed send-back fires later. Players who
                     // already joined another match (queue or manual) are guarded the same way: a stale
                     // send-back must never teleport them out of a running game.
-                    if (pl.isOnline && pl !in QueueManager.queue && !GameManager.isInGame(pl, onlyAlive = false))
+                    if (pl.isOnline && QueueManager.currentQueueOf(pl) == null && !GameManager.isInGame(pl, onlyAlive = false))
                         runCatching {
                             val lobby = Configuration.getLobbySpawn()
                             pl.teleport(lobby)
