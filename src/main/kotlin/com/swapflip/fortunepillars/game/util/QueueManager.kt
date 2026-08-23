@@ -119,9 +119,10 @@ object QueueManager : Ticking {
             player.sendMessage(player.locale().component("queue.join.in_game", color = NamedTextColor.RED))
             return
         }
-        val target = mapName.takeIf { it.isNotEmpty() } ?: lastMap ?: run {
-            if (Configuration.queueMethod == QueueMethod.AUTO) availableMaps().firstOrNull()?.name else null
-        } ?: run {
+        val target = mapName.takeIf { it.isNotEmpty() }
+            ?: lastMap?.takeIf { it.isNotEmpty() }
+            ?: run { if (Configuration.queueMethod == QueueMethod.AUTO) availableMaps().firstOrNull()?.name else null }
+            ?: run {
             player.sendMessage(player.locale().component("queue.join.no_map", color = NamedTextColor.RED))
             return
         }
