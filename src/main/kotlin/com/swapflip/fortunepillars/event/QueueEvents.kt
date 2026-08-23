@@ -34,6 +34,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
@@ -245,6 +246,14 @@ object QueueEvents : Listener {
     @EventHandler
     fun onDrop(event: PlayerDropItemEvent) {
         if (QueueManager.currentQueueOf(event.player) != null) event.isCancelled = true
+    }
+
+    // A disconnect while queued must restore the player's snapshot and shrink the queue, so the
+    // next-start check never waits on a player who is no longer online (leaveQueue is a no-op
+    // when the player isn't in any queue).
+    @EventHandler
+    fun onQuit(event: PlayerQuitEvent) {
+        QueueManager.leaveQueue(event.player)
     }
 
     @EventHandler

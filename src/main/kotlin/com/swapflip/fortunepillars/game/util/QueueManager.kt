@@ -119,7 +119,13 @@ object QueueManager : Ticking {
             player.sendMessage(player.locale().component("queue.join.in_game", color = NamedTextColor.RED))
             return
         }
-        val map = MapManager.maps[mapName] ?: run {
+        val target = mapName.takeIf { it.isNotEmpty() } ?: lastMap ?: run {
+            if (Configuration.queueMethod == QueueMethod.AUTO) availableMaps().firstOrNull()?.name else null
+        } ?: run {
+            player.sendMessage(player.locale().component("queue.join.no_map", color = NamedTextColor.RED))
+            return
+        }
+        val map = MapManager.maps[target] ?: run {
             player.sendMessage(player.locale().component("queue.join.invalid_map", color = NamedTextColor.RED))
             return
         }
@@ -295,7 +301,7 @@ object QueueManager : Ticking {
 
         players.forEach { QueueScoreboards.hide(it) }
         Cage.clearAll(players)
-        Cage.clearTowers(emptyList())
+        Cage.clearTowers(queue.players)
 
         Configuration.queuePreCommands.forEach { FortunePillars.sendCommand(it(placeholders)) }
 
