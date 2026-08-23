@@ -9,6 +9,7 @@ import com.swapflip.fortunepillars.game.GameCompanion
 import com.swapflip.fortunepillars.generation.HorGenCompanion
 import com.swapflip.fortunepillars.generation.VertGenCompanion
 import com.swapflip.fortunepillars.util.Configuration
+import com.swapflip.fortunepillars.util.ModeConfigs
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.Style
 import net.kyori.adventure.text.format.TextColor
@@ -20,19 +21,42 @@ import java.util.*
 data class GameInfo(
     val mode: GameCompanion<*>,
     val namespace: String,
-    val itemCountdown: () -> Long = { Configuration.provider.getLong("modes.$namespace.cooldown", 5L) },
-    @Suppress("DEPRECATION") val timeLimit: () -> Time = { ExtendedEntryTypes.timeString.convert(Configuration.provider.getString("modes.$namespace.time-limit", "10min")) ?: Time(10, Time.Unit.MINUTES) },
+    // Seconds between item drops. Read live from the mode's config file (modes/<namespace>.yml),
+    // so editing the file changes the pacing of the next game without a restart.
+    val itemCountdown: () -> Long = { ModeConfigs.cooldown(namespace) },
+    // Total match length, parsed from the mode's `time-limit` (e.g. "10min").
+    @Suppress("DEPRECATION") val timeLimit: () -> Time = { ModeConfigs.timeLimit(namespace) },
 
-    val accentColor: () -> TextColor = { Configuration.provider.getString("modes.$namespace.visual.color", "#FFFFFF").fromHexToTextColor() },
-    val showScoreboard: () -> Boolean = { Configuration.provider.getBoolean("modes.$namespace.visual.show-scoreboard") },
-    val showActionBar: () -> Boolean = { Configuration.provider.getBoolean("modes.$namespace.visual.show-actionbar") },
-    val showBossBar: () -> Boolean = { Configuration.provider.getBoolean("modes.$namespace.visual.show-bossbar") },
+    // Theme color used for this mode's scoreboard and bossbar, from `visual.color`.
+    val accentColor: () -> TextColor = { ModeConfigs.accentColor(namespace) },
+    // Whether this mode shows the in-game scoreboard / bossbar (visual.show-scoreboard / -bossbar).
+    val showScoreboard: () -> Boolean = { ModeConfigs.showScoreboard(namespace) },
+    val showBossBar: () -> Boolean = { ModeConfigs.showBossBar(namespace) },
 
-    val horGen: () -> HorGenCompanion<*> = { Configuration.provider.getString("modes.$namespace.generator.horizontal", "circular").toHorGen() },
-    val vertGen: () -> VertGenCompanion<*> = { Configuration.provider.getString("modes.$namespace.generator.vertical", "pillar").toVertGen() },
+    // Horizontal / vertical generator selection (generator.horizontal / .vertical).
+    val horGen: () -> HorGenCompanion<*> = { ModeConfigs.horGen(namespace) },
+    val vertGen: () -> VertGenCompanion<*> = { ModeConfigs.vertGen(namespace) },
 
-    // Additional filter applied to the receivable item list:
-    val additionalFilter: ((Material) -> Boolean) = { true },
+    // The mode's loot weighting function: maps any legal material to how likely it is to drop
+    // (0 = banned). Read from modes/<namespace>.yml; when the file omits `loot`, the built-in
+    // LootWeights profile for this mode is used as the fallback.
+    val lootWeights: () -> (Material) -> Int = { ModeConfigs.lootWeights(namespace) },
+
+    // Every drop cycle hands out exactly one item: a special or power-up replaces the drop, a
+    // regular material is picked from the weighted pool. Multi-item drops were removed on purpose
+    // - one drop is one item, always.
+    val dropCount: () -> Int = { 1 },
+
+    // Whether power-up drops are enabled for this mode (power-ups.enabled).
+    val powerUpsEnabled: () -> Boolean = { ModeConfigs.powerUpEnabled(namespace) },
+    // Percent chance a drop is replaced by a power-up. Per-mode override of `items.power-up-chance`.
+    val powerUpChance: () -> Int = { ModeConfigs.powerUpChance(namespace) },
+    // Percent chance a dropped gear item is enchanted. Per-mode override of `items.enchant-chance`.
+    val enchantChance: () -> Int = { ModeConfigs.enchantChance(namespace).coerceAtMost(10) },
+    // Percent chance a drop is replaced by a special item (Super Star, Fireball, Aid Platform)
+    // on its own, independent of the power-up roll. Capped at 2 so specials stay rare no matter
+    // what the config says - they are the strongest drops in the game.
+    val specialChance: () -> Int = { ModeConfigs.specialChance(namespace).coerceAtMost(2) },
 ) {
     val keyStyle: () -> Style = { Style.style(accentColor(), TextDecoration.BOLD) }
     val valueStyle = Style.style(NamedTextColor.GRAY).decoration(TextDecoration.BOLD, TextDecoration.State.FALSE)

@@ -9,38 +9,37 @@ import com.swapflip.fortunepillars.generation.vertical.BlockVertGen
 import com.swapflip.fortunepillars.generation.vertical.PillarVertGen
 
 object Registry {
-    val horizontalGenerators = listOf(
-        CircularHorGen,
-        RandomHorGen,
-    ).associateBy { it.namespace }
+    // associateBy silently drops duplicate keys: log any that slip in so a renamed namespace in
+    // one entry can never shadow another one without anyone noticing.
+    private fun <T> named(entries: List<T>, namespace: (T) -> String): Map<String, T> =
+        entries.groupBy(namespace).also { grouped ->
+            grouped.filterValues { it.size > 1 }.keys.forEach {
+                FortunePillars.LOG.warn("[Registry] Duplicate namespace \"$it\": only the first entry is used.")
+            }
+        }.mapValues { (_, v) -> v.first() }
 
-    val verticalGenerators = listOf(
-        BlockVertGen,
-        PillarVertGen,
-    ).associateBy { it.namespace }
+    val horizontalGenerators = named(
+        listOf(CircularHorGen, RandomHorGen),
+    ) { it.namespace }
 
-    val modes = listOf(
-        BlockyGame,
-        ChaosGame,
-        ClassicGame,
-        ItemOnlyGame,
-        ItemShuffleGame,
-        OriginalGame,
-        PlayerShuffleGame,
-        NormalGame,
-        BalancedGame,
-        SwapperGame,
-        ShuffleGame,
-        WeakGame,
-        OpGame,
-    ).associateBy { it.gameInfo.namespace }
+    val verticalGenerators = named(
+        listOf(BlockVertGen, PillarVertGen),
+    ) { it.namespace }
 
-    val modifiers = listOf(
-        NormalModifier,
-        RisingLavaModifier,
-        TntFallsModifier,
-        SpeedrunnerModifier,
-    ).associateBy { it.modifierInfo.namespace }
+    val modes = named(
+        listOf(
+            BlockyGame, ActionGame, NormalGame, OpGame,
+        ),
+    ) { it.gameInfo.namespace }
+
+    val modifiers = named(
+        listOf(
+            NormalModifier, RisingLavaModifier, TntFallsModifier, SpeedrunnerModifier,
+            ArrowRainModifier, LightningModifier, MoonwalkModifier, ChainSwapModifier,
+            AblockalypseModifier, LavaFloorModifier, UhcModifier,
+            MobWaveModifier, ShrinkingWorldModifier,
+        ),
+    ) { it.modifierInfo.namespace }
 
     fun load() {
         FortunePillars.LOG.info("[Registry] Loaded ${horizontalGenerators.size} horizontal generators as Map<Name, HorGen>.")

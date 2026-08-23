@@ -34,8 +34,52 @@ dependencies:
       required: false
       join-classpath: true
 
+### Commands ###
+commands:
+  game:
+    description: Utilities for managing Fortune Pillars games or starting new ones.
+    usage: /game <start|stop|list|info>
+    aliases: [pillar-peril, match, round]
+  pp:
+    description: "Fortune Pillars root command. Sub-commands: game, queue, map, config."
+    usage: /pp <forcestart|leave|game|queue|map|config>
+  pof:
+    description: "Fortune Pillars viewer commands. Sub-command: spectate."
+    usage: /pof <spectate>
+  pp-config:
+    description: Manage the FortunePillars configuration.
+    usage: /pp-config <reload|modify>
+    aliases: [pillar-peril-config, pp-settings]
+
 ### Permissions ###
 permissions:
+  fortunepillars.start:
+    description: Allows starting a Fortune Pillars game.
+    default: op
+  fortunepillars.stop:
+    description: Allows stopping a running Fortune Pillars game.
+    default: op
+  fortunepillars.list:
+    description: Allows listing all running Fortune Pillars games.
+    default: true
+  fortunepillars.info:
+    description: Allows viewing detailed information about a running Fortune Pillars game.
+    default: true
+  fortunepillars.config:
+    description: Allows managing the plugin configuration in-game.
+    default: op
+  fortunepillars.map:
+    description: Allows creating and managing Fortune Pillars maps.
+    default: op
+  fortunepillars.spectate:
+    description: Allows spectating maps via /pof spectate.
+    default: true
+  fortunepillars.bypass:
+    description: Exempts the player from being teleported out of plugin worlds (queue/game/lobby) by the stranded-player safety net.
+    default: op
   fortunepillars.forcestart:
     description: Allows force starting a Fortune Pillars game.
+    default: op
+  fortunepillars.queue.admin:
+    description: Allows managing the queue (list, add, remove, clear players).
     default: op

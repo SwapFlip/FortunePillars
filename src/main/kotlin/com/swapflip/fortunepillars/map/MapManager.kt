@@ -11,12 +11,19 @@ import kotlin.math.min
 object MapManager {
     private val folder: File get() = File(FortunePillars.PLUGIN.dataFolder, "maps")
 
+    // Pre-rename installs kept their data in the "PillarPeril" folder: fall back to it so maps
+    // (and their schematics) keep working without re-adding everything under the new name.
+    private val legacyFolder: File get() = File(FortunePillars.PLUGIN.dataFolder.parentFile, "PillarPeril/maps")
+
     val maps = mutableMapOf<String, ArenaMap>()
 
     fun load() {
         maps.clear()
         folder.mkdirs()
         folder.listFiles { f -> f.isFile && f.extension == "yml" }?.forEach(::loadFile)
+        // New maps always save into the current folder, so they never split across both locations.
+        if (maps.isEmpty())
+            legacyFolder.listFiles { f -> f.isFile && f.extension == "yml" }?.forEach(::loadFile)
         FortunePillars.LOG.info("[Maps] Loaded ${maps.size} map(s).")
     }
 
@@ -36,7 +43,8 @@ object MapManager {
 
         // Strip duplicate spawns and (0,0,0) placeholders (created when spawn N was set before
         // spawns 1..N-1), so maps can never put multiple players into the same cage.
-        spawns.removeAll { it == BlockPos(0, 0, 0) || spawns.indexOf(it) != spawns.lastIndexOf(it) }
+        val spawnCounts = spawns.groupingBy { it }.eachCount()
+        spawns.removeAll { it == BlockPos(0, 0, 0) || (spawnCounts[it] ?: 0) > 1 }
 
         val spectator = yaml.getIntegerList("spectator-spawn").let { if (it.size == 3) BlockPos(it[0], it[1], it[2]) else null }
         val deathHeight = if (yaml.contains("death-height")) yaml.getInt("death-height") else null
@@ -74,9 +82,25 @@ object MapManager {
         maps.remove(name)
         File(folder, "$name.yml").delete()
         File(folder, "$name.schem").delete()
+        invalidateSchematicCache(name)
     }
 
-    fun schematicFile(name: String): File = File(folder, "$name.schem")
+    fun schematicFile(name: String): File {
+        val current = File(folder, "$name.schem")
+        return if (current.exists()) current else File(legacyFolder, "$name.schem")
+    }
+
+    // Schematic existence is checked on every queue tick, map-menu refresh and map pick: cache
+    // the result per map and invalidate whenever a schematic is saved or deleted. Files rarely
+    // appear or vanish on their own, so a stale entry for the lifetime of a session is acceptable.
+    private val schematicExists = mutableMapOf<String, Boolean>()
+
+    fun hasSchematic(name: String): Boolean = schematicExists.getOrPut(name) { schematicFile(name).exists() }
+
+    fun invalidateSchematicCache(name: String? = null) {
+        if (name == null) schematicExists.clear()
+        else schematicExists.remove(name)
+    }
 
     // Saves the schematic between the two selected corners and re-anchors the map's origin to the selection's
     // min corner. The paste anchor then always matches the schematic's local (0,0,0), so the arena is never offset.
@@ -88,7 +112,10 @@ object MapManager {
         )
         map.origin = origin
         save(map)
-        return SchematicSaver.save(world, first, second, schematicFile(map.name))
+        return SchematicSaver.save(world, first, second, schematicFile(map.name)).also {
+            // The schematic either now exists or was replaced - drop the stale cache entry.
+            invalidateSchematicCache(map.name)
+        }
     }
 
     fun pickMap(playerCount: Int, world: World, exclude: String? = null): ArenaMap? {
@@ -98,7 +125,7 @@ object MapManager {
             maps.values.filter { it.name in Configuration.queueMapPool }
 
         val candidates = pool.filter {
-            it.world == world.name && it.spawns.size >= playerCount && it.spectatorSpawn != null && schematicFile(it.name).exists()
+            it.world == world.name && it.spawns.size >= playerCount && it.spectatorSpawn != null && hasSchematic(it.name)
         }
         val filtered = if (exclude != null) candidates.filter { it.name != exclude } else candidates
 

@@ -2,6 +2,7 @@ package com.swapflip.fortunepillars.game.util
 
 import com.swapflip.fortunepillars.game.Game
 import com.swapflip.fortunepillars.player.PillarPlayer
+import com.swapflip.fortunepillars.util.Metrics
 import org.bukkit.Location
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
@@ -24,10 +25,17 @@ object GameManager {
 
     fun add(game: Game) {
         games[game.id] = game
+        // Remember the game world forever: players who reconnect after this game ended are
+        // detected by the rejoin handler and sent home instead of being stranded in the world.
+        Cage.registerPluginWorld(game.world.name)
 
-        gamesStartedSinceLastFlush.add(game.info.namespace)
-        modifiersUsedSinceLastFlush.addAll(game.modifiers.map { it.info.namespace })
-        playersPerGameSinceLastFlush.add(game.initialPlayers.size)
+        // Only record metrics while FastStats is actually collecting: when it is disabled the
+        // flush callback never runs, so an unguarded add() would leak entries forever.
+        if (Metrics.isActive()) {
+            gamesStartedSinceLastFlush.add(game.info.namespace)
+            modifiersUsedSinceLastFlush.addAll(game.modifiers.map { it.info.namespace })
+            playersPerGameSinceLastFlush.add(game.initialPlayers.size)
+        }
     }
 
     fun remove(game: Game) {
@@ -44,7 +52,9 @@ object GameManager {
 
     fun isPartOfGame(entity: Entity): Boolean {
         return if (entity is Player) {
-            isInGame(entity)
+            // onlyAlive=false: eliminated players are still part of the game - their entities
+            // (e.g. portal travel) must be handled like any other participant's.
+            isInGame(entity, onlyAlive = false)
         } else {
             games.any { entity in it.value.buildings.spawnedEntities }
         }
@@ -52,15 +62,21 @@ object GameManager {
 
     fun isWithinGame(location: Location): Boolean {
         val world = location.world
-        return games.any { it.value.world == world && it.value.center.distance(location) < it.value.buildings.placedRadius * 2 }
+        return games.any { it.value.world == world && it.value.isWithin(location) }
     }
 
-    fun getClosestGame(location: Location): Game? {
+    fun getClosestGame(location: Location, withinBounds: Boolean = true): Game? {
         val world = location.world
-        return games.values
-            .filter { it.world == world }
-            .associateBy { it.center.distance(location) }
-            .filter { it.key < it.value.buildings.placedRadius * 2 }
-            .minByOrNull { it.key }?.value
+        var closest: Game? = null
+        var closestDist = Double.MAX_VALUE
+        for (game in games.values) {
+            if (game.world != world || (withinBounds && !game.isWithin(location))) continue
+            val dist = game.center.distanceSquared(location)
+            if (dist < closestDist) {
+                closest = game
+                closestDist = dist
+            }
+        }
+        return closest
     }
 }

@@ -5,6 +5,7 @@ import com.marcpg.libpg.util.locale
 import com.swapflip.fortunepillars.FortunePillars
 import com.swapflip.fortunepillars.game.Game
 import com.swapflip.fortunepillars.util.Configuration
+import com.swapflip.fortunepillars.util.MINI_MESSAGE
 import com.swapflip.fortunepillars.util.VoidChunkGenerator
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
@@ -27,6 +28,20 @@ object Cage {
     private val cages = mutableMapOf<UUID, MutableList<Block>>()
     private val towers = mutableMapOf<UUID, MutableList<Block>>()
     private val gameCages = mutableListOf<Block>()
+    // O(1) protection lookups on block-break/place events, kept in sync with the lists above.
+    // Without it, every protected-block check flattened every cage list into a new collection.
+    private val protectedBlocks = HashSet<Block>()
+
+    private fun registerBlocks(blocks: List<Block>) {
+        protectedBlocks += blocks
+    }
+
+    private fun unregisterBlocks(blocks: List<Block>?) {
+        blocks?.forEach {
+            it.type = Material.AIR
+            protectedBlocks -= it
+        }
+    }
 
     fun lobby(player: Player, index: Int, count: Int) {
         val world = resolveWorld() ?: return
@@ -45,6 +60,9 @@ object Cage {
     }
 
     fun ensureQueueWorld(): World? {
+        // A disabled queue has no world: creating one anyway would leak a void world nobody uses.
+        if (!Configuration.queueEnabled) return null
+
         val map = mapOf(
             "id" to Game.generateId(),
             "mode" to Configuration.queueMode.gameInfo.namespace,
@@ -57,20 +75,43 @@ object Cage {
         }
         queueWorldName = name
 
-        return Bukkit.getWorld(name) ?: runCatching {
-            WorldCreator(name).generator(VoidChunkGenerator()).createWorld()
+        // Pre-rename installs keep their world under the "PillarPeril" name: if the configured
+        // world doesn't exist (e.g. a stale default), fall back to the existing PillarPeril world
+        // instead of generating a fresh void world nobody built anything in.
+        Bukkit.getWorld(name)?.let { queueWorldName = it.name; return it }
+        Bukkit.getWorld("PillarPeril")?.let {
+            FortunePillars.LOG.info("Queue world \"$name\" does not exist; using the existing \"PillarPeril\" world instead.")
+            queueWorldName = it.name
+            return it
+        }
+
+        return runCatching {
+            // Structures off: the queue world is a void lobby, so village/shipwreck generation
+            // would only waste time and disk space on a world nobody explores.
+            WorldCreator(name).generator(VoidChunkGenerator()).generateStructures(false).createWorld()
         }.onFailure {
             FortunePillars.LOG.error("Could not create queue world \"$name\".", it)
         }.getOrNull()
     }
 
     // The queue world name captured by the last ensureQueueWorld() call, or null when it uses placeholders.
-    private var queueWorldName: String? = null
+    var queueWorldName: String? = null
+        private set
+
+    // Every world the plugin ever used for a game, kept forever (worlds get reused, so removing
+    // entries when a game ends would let the "stuck in the PillarPeril world" case slip through
+    // again: a player who rejoins after their game ended stands in a world that is no longer an
+    // active game world, but still one they must never be left in).
+    private val pluginWorldNames = mutableSetOf<String>()
+
+    fun registerPluginWorld(name: String) {
+        pluginWorldNames += name
+    }
 
     // Whether a world is owned by FortunePillars (the queue lobby or any running game), used to detect
     // players who ended up stranded in one of them.
     fun isPluginWorld(world: World): Boolean =
-        world.name == queueWorldName || GameManager.games.values.any { it.world.name == world.name }
+        world.name == queueWorldName || world.name in pluginWorldNames
 
     private fun resolveWorld(): World? = ensureQueueWorld()
 
@@ -83,6 +124,7 @@ object Cage {
             blocks.add(block)
             block.type = Configuration.platformMaterial
         }
+        registerBlocks(blocks)
         return blocks
     }
 
@@ -92,17 +134,17 @@ object Cage {
     }
 
     fun clearGameCages() {
-        gameCages.forEach { it.type = Material.AIR }
+        unregisterBlocks(gameCages)
         gameCages.clear()
     }
 
     private fun place(player: Player, feet: Location) {
-        cages.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
+        unregisterBlocks(cages.remove(player.uniqueId))
         cages[player.uniqueId] = buildCage(feet).toMutableList()
     }
 
     fun arena(player: Player, feet: Location) {
-        cages.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
+        unregisterBlocks(cages.remove(player.uniqueId))
         val placed = buildArenaCage(feet)
         cages[player.uniqueId] = placed.toMutableList()
         player.teleport(feet)
@@ -115,10 +157,11 @@ object Cage {
         val placed = mutableListOf<Block>()
         for (x in (origin.x - 1)..(origin.x + 1)) {
             for (z in (origin.z - 1)..(origin.z + 1)) {
-                for (y in origin.y..(origin.y + 3)) {
+                for (y in (origin.y - 1)..(origin.y + 3)) {
                     val isWall = x == origin.x - 1 || x == origin.x + 1 || z == origin.z - 1 || z == origin.z + 1
                     val isCeiling = y == origin.y + 3
-                    if (!isWall && !isCeiling) continue
+                    val isFloor = y == origin.y - 1
+                    if (!isWall && !isCeiling && !isFloor) continue
 
                     val block = origin.world.getBlockAt(x, y, z)
                     placed.add(block)
@@ -126,11 +169,11 @@ object Cage {
                 }
             }
         }
+        registerBlocks(placed)
         return placed
     }
 
-    fun isProtected(block: Block): Boolean =
-        block in cages.values.flatten() || block in towers.values.flatten() || block in gameCages
+    fun isProtected(block: Block): Boolean = block in protectedBlocks
 
     private fun buildCage(feet: Location): List<Block> {
         val origin = feet.block
@@ -152,18 +195,22 @@ object Cage {
             placed.add(block)
             block.type = Material.GLASS
         }
+        registerBlocks(placed)
         return placed
     }
 
     private fun giveLobbyItems(player: Player) {
+        // Joining the queue wipes the inventory first, so nothing from the outside (items held
+        // from a game, a previous queue session or a plugin chest) survives into the lobby.
+        player.inventory.clear()
         val leave = ItemStack(Material.RED_DYE).apply {
             val meta = itemMeta
-            meta.displayName(player.locale().component("queue.item.leave", color = NamedTextColor.RED))
+            meta.displayName(MINI_MESSAGE.deserialize(Configuration.menuLeaveItemName))
             itemMeta = meta
         }
         val vote = ItemStack(Material.CHEST).apply {
             val meta = itemMeta
-            meta.displayName(player.locale().component("queue.item.vote", color = NamedTextColor.GOLD))
+            meta.displayName(MINI_MESSAGE.deserialize(Configuration.menuMapItemName))
             itemMeta = meta
         }
         player.inventory.setItem(0, vote)
@@ -171,8 +218,8 @@ object Cage {
     }
 
     fun clear(player: Player) {
-        cages.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
-        towers.remove(player.uniqueId)?.forEach { it.type = Material.AIR }
+        unregisterBlocks(cages.remove(player.uniqueId))
+        unregisterBlocks(towers.remove(player.uniqueId))
         if (player.isOnline) {
             player.exp = 0.0f
             player.level = 0
@@ -182,8 +229,8 @@ object Cage {
     }
 
     fun clearTowers() {
-        cages.forEach { (_, blocks) -> blocks.forEach { it.type = Material.AIR } }
-        towers.forEach { (_, blocks) -> blocks.forEach { it.type = Material.AIR } }
+        cages.values.forEach(::unregisterBlocks)
+        towers.values.forEach(::unregisterBlocks)
         cages.clear()
         towers.clear()
     }

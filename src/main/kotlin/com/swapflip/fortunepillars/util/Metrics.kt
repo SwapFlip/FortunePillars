@@ -11,6 +11,11 @@ object Metrics {
     private var errorTracker: ErrorTracker? = null
     private var metrics: BukkitMetrics? = null
 
+    // True while FastStats is collecting. When it is disabled (or failed to start), the
+    // GameManager still records per-game entries into the flush lists - without this flag those
+    // lists would grow forever, because nothing ever flushes them.
+    fun isActive(): Boolean = metrics != null
+
     fun start() {
         if (Configuration.disableFastStats) return
 

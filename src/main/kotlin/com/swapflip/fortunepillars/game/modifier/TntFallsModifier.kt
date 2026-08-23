@@ -5,49 +5,36 @@ import com.marcpg.libpg.util.locale
 import com.swapflip.fortunepillars.FortunePillars
 import com.swapflip.fortunepillars.game.Game
 import com.swapflip.fortunepillars.game.GameModifier
-import com.swapflip.fortunepillars.game.GameModifierCompanion
+import com.swapflip.fortunepillars.game.ModifierCompanion
 import com.swapflip.fortunepillars.game.util.GameModifierInfo
 import com.swapflip.fortunepillars.map.MapBounds
-import com.swapflip.fortunepillars.util.Configuration
+import com.swapflip.fortunepillars.util.ModifierConfigs
 import com.swapflip.fortunepillars.util.Ticking
 import com.swapflip.fortunepillars.util.playSoundSafe
+import com.swapflip.fortunepillars.util.primedTntEntityType
+import com.swapflip.fortunepillars.util.setFuseTicks
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Location
 import org.bukkit.Sound
 import org.bukkit.entity.Entity
-import org.bukkit.entity.EntityType
 
 class TntFallsModifier(game: Game) : GameModifier(game) {
-    companion object : GameModifierCompanion<TntFallsModifier> {
-        override val modifierInfo: GameModifierInfo by lazy { GameModifierInfo(this, "tnt-falls") }
-
-        override fun constructModifier(game: Game): TntFallsModifier = TntFallsModifier(game)
-    }
+    companion object : ModifierCompanion<TntFallsModifier>("tnt-falls", ::TntFallsModifier)
 
     override val info: GameModifierInfo = modifierInfo
 
-    private val intervalSecs = Configuration.provider.getInt("modifiers.tnt-falls.interval", 10)
-    private val startDelaySecs = Configuration.provider.getInt("modifiers.tnt-falls.start-delay", 60)
-    private val fuse = Configuration.provider.getInt("modifiers.tnt-falls.fuse-ticks", 200)
-    private val perDrop = Configuration.provider.getInt("modifiers.tnt-falls.per-drop", 3)
-    private val size = Configuration.provider.getInt("modifiers.tnt-falls.size", 100)
+    private val intervalSecs = ModifierConfigs.int("tnt-falls", "interval", 10)
+    private val startDelaySecs = ModifierConfigs.int("tnt-falls", "start-delay", 10)
+    private val fuse = ModifierConfigs.int("tnt-falls", "fuse-ticks", 200)
+    private val perDrop = ModifierConfigs.int("tnt-falls", "per-drop", 4)
+    private val size = ModifierConfigs.int("tnt-falls", "size", 75)
 
     private val spawned = mutableListOf<Entity>()
-
-    private val tntType: EntityType by lazy {
-        runCatching { EntityType.valueOf("PRIMED_TNT") }.getOrElse { EntityType.valueOf("TNT") }
-    }
-
-    private val fuseSetter: java.lang.reflect.Method? by lazy {
-        val clazz = runCatching { Entity::class.java.classLoader.loadClass("org.bukkit.entity.PrimedTnt") }
-            .getOrElse { runCatching { Entity::class.java.classLoader.loadClass("org.bukkit.entity.TNTPrimed") }.getOrNull() }
-        clazz?.getMethod("setFuseTicks", Int::class.javaPrimitiveType)
-    }
 
     override fun tick(tick: Ticking.Tick) {
         val playArea = game.playArea(size)
         // TNT falls on its own schedule (every 10 seconds by default), independent of the item cycle.
-        if (!tick.isInInterval(game.startingTick + startDelaySecs * 20, intervalSecs * 20)) return
+        if (!tick.isInInterval(game.anchorTick() + startDelaySecs * 20, intervalSecs * 20)) return
 
         game.players.playSoundSafe(Sound.ENTITY_TNT_PRIMED, 1.0f, 1.2f)
         game.players.forEach { p ->
@@ -60,8 +47,8 @@ class TntFallsModifier(game: Game) : GameModifier(game) {
         runCatching {
             randomSpots(playArea, perDrop).forEach { (x, z) ->
                 val location = Location(game.world, x + 0.5, (game.world.maxHeight - 1).toDouble(), z + 0.5)
-                val entity = game.world.spawnEntity(location, tntType)
-                runCatching { fuseSetter?.invoke(entity, fuse) }
+                val entity = game.world.spawnEntity(location, primedTntEntityType)
+                entity.setFuseTicks(fuse)
                 spawned += entity
             }
         }.onFailure {

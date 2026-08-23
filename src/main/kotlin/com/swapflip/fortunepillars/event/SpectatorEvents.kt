@@ -26,7 +26,9 @@ object SpectatorEvents : Listener {
 
     @EventHandler
     fun onInteract(event: PlayerInteractEvent) {
-        if (event.hand != EquipmentSlot.HAND) return
+        // The compass works from either hand, so a spectator whose main hand is empty still
+        // has a reliable way back to the menu.
+        if (event.hand != EquipmentSlot.HAND && event.hand != EquipmentSlot.OFF_HAND) return
         if (event.item?.type != Material.COMPASS) return
         if (event.player.gameMode != GameMode.SPECTATOR) return
 
@@ -39,10 +41,12 @@ object SpectatorEvents : Listener {
     fun onInteractEntity(event: PlayerInteractAtEntityEvent) {
         val player = event.player
         if (player.gameMode != GameMode.SPECTATOR) return
-        if (GameManager.player(player, onlyAlive = false) == null) return
+        val spectator = GameManager.player(player, onlyAlive = false) ?: return
 
         val target = event.rightClicked as? Player ?: return
         if (target.gameMode == GameMode.SPECTATOR) return
+        // Only same-game targets: a spectator of one game must not teleport into another match.
+        if (GameManager.player(target, onlyAlive = true)?.game !== spectator.game) return
         player.teleport(target)
     }
 
@@ -52,8 +56,12 @@ object SpectatorEvents : Listener {
         if (event.view.title() != menuTitle(player)) return
         event.isCancelled = true
 
-        val target = (event.currentItem?.itemMeta as? SkullMeta)?.owningPlayer ?: return
-        player.teleport(Bukkit.getPlayer(target.uniqueId) ?: return)
+        val spectator = GameManager.player(player, onlyAlive = false) ?: return
+        val target = (event.currentItem?.itemMeta as? SkullMeta)?.owningPlayer?.uniqueId?.let { Bukkit.getPlayer(it) } ?: return
+        // Only alive players of the same game - a spectator can't follow another spectator, and
+        // never a player fighting in a different match.
+        if (GameManager.player(target, onlyAlive = true)?.game !== spectator.game) return
+        player.teleport(target)
         player.closeInventory()
     }
 
@@ -61,6 +69,9 @@ object SpectatorEvents : Listener {
         val inv = Bukkit.createInventory(null, 27, menuTitle(player))
         game.players.forEachIndexed { i, p ->
             if (i >= 27) return@forEachIndexed
+            // Only players still alive appear - dead players (already spectators) aren't worth
+            // a slot, and the menu has no way to teleport to them meaningfully.
+            if (p.player.gameMode == GameMode.SPECTATOR) return@forEachIndexed
 
             val head = ItemStack(Material.PLAYER_HEAD)
             val meta = head.itemMeta as SkullMeta
