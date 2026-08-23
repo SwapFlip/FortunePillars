@@ -18,7 +18,7 @@ object WorldManager {
     // Returns null immediately when per-game-worlds is disabled so callers fall back to the shared world.
     fun createGameWorld(id: Int): World? {
         if (!Configuration.perGameWorlds) return null
-        return runCatching {
+        val result = runCatching {
             WorldCreator(gameWorldName(id))
                 .generator(VoidChunkGenerator())
                 .generateStructures(false)
@@ -28,6 +28,10 @@ object WorldManager {
         }.onFailure {
             FortunePillars.LOG.error("Could not create game world \"${gameWorldName(id)}\".", it)
         }.getOrNull()
+        if (result == null) {
+            FortunePillars.LOG.warn("createWorld() returned null for \"${gameWorldName(id)}\" (world may already exist).")
+        }
+        return result
     }
 
     // Unloads the world and asynchronously deletes its folder. No-op when deletion is disabled or the
@@ -37,10 +41,15 @@ object WorldManager {
         if (!isGameWorld(world)) return
         val name = world.name
         runCatching { Bukkit.unloadWorld(world, false) }
-            .onFailure { FortunePillars.LOG.warn("Could not unload world \"$name\".", it) }
-        Bukkit.getScheduler().runTaskAsynchronously(FortunePillars.PLUGIN, Runnable {
-            runCatching { File(Bukkit.getWorldContainer(), name).deleteRecursively() }
-                .onFailure { FortunePillars.LOG.warn("Could not delete world folder \"$name\".", it) }
-        })
+            .onFailure {
+                FortunePillars.LOG.warn("Could not unload world \"$name\". Aborting folder deletion.", it)
+                return
+            }
+        runCatching {
+            Bukkit.getScheduler().runTaskAsynchronously(FortunePillars.PLUGIN, Runnable {
+                runCatching { File(Bukkit.getWorldContainer(), name).deleteRecursively() }
+                    .onFailure { FortunePillars.LOG.warn("Could not delete world folder \"$name\".", it) }
+            })
+        }.onFailure { FortunePillars.LOG.warn("Could not schedule world-folder deletion for \"$name\".", it) }
     }
 }

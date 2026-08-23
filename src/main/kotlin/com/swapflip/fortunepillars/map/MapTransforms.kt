@@ -4,6 +4,8 @@ package com.swapflip.fortunepillars.map
 // -originalOrigin. This lets the schematic be pasted at (0,0,0) in a fresh world while every
 // existing Game coordinate calculation (which reads map.origin / map.spawns) keeps working unchanged.
 fun translateMapToOrigin(map: ArenaMap): ArenaMap {
+    // NOTE: the field-by-field copy below must stay in sync with ArenaMap's properties. If a new
+    // property is added to ArenaMap, it must be copied here (or it will be silently dropped).
     val o = map.origin
     val shift: (BlockPos) -> BlockPos = { BlockPos(it.x - o.x, it.y - o.y, it.z - o.z) }
     return ArenaMap(
