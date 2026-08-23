@@ -27,10 +27,11 @@ object WorldManager {
                 ?.apply { setAutoSave(false) }
         }.onFailure {
             FortunePillars.LOG.error("Could not create game world \"${gameWorldName(id)}\".", it)
-        }.getOrNull()
-        if (result == null) {
-            FortunePillars.LOG.warn("createWorld() returned null for \"${gameWorldName(id)}\" (world may already exist).")
-        }
+            }.onSuccess {
+                if (it == null) {
+                    FortunePillars.LOG.warn("createWorld() returned null for \"${gameWorldName(id)}\" (world may already exist).")
+                }
+            }.getOrNull()
         return result
     }
 
@@ -40,11 +41,11 @@ object WorldManager {
         if (!Configuration.deleteGameWorldsOnCleanup) return
         if (!isGameWorld(world)) return
         val name = world.name
-        runCatching { Bukkit.unloadWorld(world, false) }
-            .onFailure {
-                FortunePillars.LOG.warn("Could not unload world \"$name\". Aborting folder deletion.", it)
-                return
-            }
+        val unloaded = runCatching { Bukkit.unloadWorld(world, false) }.getOrDefault(false)
+        if (!unloaded) {
+            FortunePillars.LOG.warn("Could not unload world \"$name\". Aborting folder deletion.")
+            return
+        }
         runCatching {
             Bukkit.getScheduler().runTaskAsynchronously(FortunePillars.PLUGIN, Runnable {
                 runCatching { File(Bukkit.getWorldContainer(), name).deleteRecursively() }
