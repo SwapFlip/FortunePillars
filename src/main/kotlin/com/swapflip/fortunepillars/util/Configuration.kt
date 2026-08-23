@@ -190,6 +190,19 @@ object Configuration : Config(PaperConfigProvider()) {
     // the previous game's world state). On by default; disabling keeps the prior layout.
     var arenaResetRePaste by boolean("arena.reset-repaste", true)
 
+    // How many games may run at once. Each per-map queue that fills starts its own world, so this
+    // caps the number of simultaneously created game worlds (and thus worlds on disk).
+    var maxConcurrentGames by int("max-concurrent-games", 8)
+
+    // When true (default), every game gets its own freshly-created void world at (0,0,0) that is
+    // deleted on cleanup. When false, the plugin reverts to the legacy single shared world behavior
+    // (no world creation/deletion) as a safety net.
+    var perGameWorlds by boolean("per-game-worlds", true)
+
+    // When true (default) and per-game-worlds is on, the game world folder is deleted after the
+    // game ends. Only worlds named "pillarperil_game_<id>" are ever deleted.
+    var deleteGameWorldsOnCleanup by boolean("delete-game-worlds-on-cleanup", true)
+
     // The void death height. Players below this y-coordinate die.
     var deathHeight by int("death-height", 0)
 

@@ -45,9 +45,15 @@ dependencies {
     implementation(files("libs/ktlibpg-full-${libs.versions.ktlibpg.get()}.jar"))
     implementation(files("libs/adventure-nbt-4.26.1.jar"))
     implementation(libs.faststats)
+
+    testImplementation(kotlin("test"))
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
+
     build {
         dependsOn(shadowJar)
     }
