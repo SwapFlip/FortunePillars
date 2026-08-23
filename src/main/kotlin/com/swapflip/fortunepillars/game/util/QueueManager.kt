@@ -75,12 +75,13 @@ object QueueManager : Ticking {
     fun availableMaps(): List<ArenaMap> {
         val pool = if (Configuration.queueMapPool.isEmpty()) MapManager.maps.values
                    else MapManager.maps.values.filter { it.name in Configuration.queueMapPool }
-        return pool.filter { MapManager.hasSchematic(it.name) && it.spawns.size >= Configuration.queueMinPlayers }
-            .sortedBy { it.name }
+        val filtered = pool.filter { MapManager.hasSchematic(it.name) && it.spawns.size >= Configuration.queueMinPlayers }
+        return if (Configuration.perGameWorlds) filtered.sortedBy { it.name }
+            else filtered.filter { it.world == (Cage.queueWorldName ?: "PillarPeril") }.sortedBy { it.name }
     }
 
     fun consumeJoinSnapshot(player: Player): PlayerSnapshot? =
-        currentQueueOf(player)?.snapshots?.remove(player.uniqueId)
+        mapQueues.values.firstNotNullOfOrNull { it.snapshots.remove(player.uniqueId) }
 
     // ---- voting (per current queue) ----
     fun recordVote(player: Player, mode: String? = null, type: String? = null, time: Int? = null) {
@@ -114,9 +115,9 @@ object QueueManager : Ticking {
             player.sendMessage(player.locale().component("queue.disabled", color = NamedTextColor.RED))
             return
         }
-        if (GameManager.games.isNotEmpty()) {
+        if (GameManager.games.size >= Configuration.maxConcurrentGames) {
             if (Configuration.queueMethod == QueueMethod.AUTO) pendingAutoJoins[player] = mapName
-            player.sendMessage(player.locale().component("queue.join.in_game", color = NamedTextColor.RED))
+            player.sendMessage(player.locale().component("queue.join.full", color = NamedTextColor.RED))
             return
         }
         val target = mapName.takeIf { it.isNotEmpty() }
@@ -136,7 +137,7 @@ object QueueManager : Ticking {
         }
         if (player in (currentQueueOf(player)?.players ?: emptyList())) return
 
-        lastMap = mapName
+        lastMap = target
         val queue = getOrCreateQueue(map)
         if (Cage.isPluginWorld(player.world))
             runCatching { player.teleport(Configuration.getLobbySpawn()) }
@@ -258,9 +259,9 @@ object QueueManager : Ticking {
     }
 
     // ---- start ----
-    private fun check(queue: MapQueue) {
+    private fun check(queue: MapQueue, force: Boolean = false) {
         if (GameManager.games.size >= Configuration.maxConcurrentGames) return
-        if (queue.players.size < Configuration.queueMinPlayers) return
+        if (!force && queue.players.size < Configuration.queueMinPlayers) return
 
         val playerCount = min(queue.players.size, Configuration.queueMaxPlayers)
         val players = MutableList(playerCount) { queue.players.removeFirst() }
@@ -363,6 +364,6 @@ object QueueManager : Ticking {
         val queue = (mapName?.let { mapQueues[it] } ?: mapQueues.values.firstOrNull { it.players.isNotEmpty() }) ?: return
         queue.startFailed = false
         queue.countdownStart = 0L; queue.countdownDelay = 0
-        check(queue)
+        check(queue, force = true)
     }
 }

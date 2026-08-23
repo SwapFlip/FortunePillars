@@ -37,8 +37,7 @@ import java.util.Locale
 import java.util.UUID
 
 object Commands {
-    // All players currently waiting across every per-map queue. Replaces the old single global
-    // `QueueManager.queue` collection with the new per-map-queue API.
+    // All players currently waiting across every per-map queue in QueueManager (the new per-map-queue API).
     private fun allQueuedPlayers(): List<Player> =
         QueueManager.availableMaps().mapNotNull { QueueManager.queueForMap(it.name) }.flatMap { it.players }
 
