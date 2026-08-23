@@ -100,7 +100,7 @@ object QueueEvents : Listener {
     @EventHandler
     fun onInteract(event: PlayerInteractEvent) {
         val player = event.player
-        if (player !in QueueManager.queue) return
+        if (QueueManager.currentQueueOf(player) == null) return
         if (event.hand != EquipmentSlot.HAND) return
 
         val item = event.item ?: return
@@ -112,8 +112,8 @@ object QueueEvents : Listener {
                 player.sendActionBar(player.locale().component("queue.leave.confirm", color = NamedTextColor.RED))
                 bukkitRunLater(60L) {
                     leaving.remove(player)
-                    if (player.isOnline && player in QueueManager.queue) {
-                        QueueManager.remove(player)
+                    if (player.isOnline && QueueManager.currentQueueOf(player) != null) {
+                        QueueManager.leaveQueue(player)
                         player.sendMessage(player.locale().chatComponent("queue.leave.success"))
                         player.teleport(Configuration.getLobbySpawn())
                     }
@@ -181,8 +181,9 @@ object QueueEvents : Listener {
     }
 
     private fun onVoteClick(player: Player, event: InventoryClickEvent) {
-        if (QueueManager.votingLocked) {
-            player.sendMessage(player.locale().chatComponent("queue.vote.locked", (QueueManager.countdownSecondsLeft ?: 0).toString()))
+        val queue = QueueManager.currentQueueOf(player)
+        if (queue == null || QueueManager.votingLocked(queue)) {
+            player.sendMessage(player.locale().chatComponent("queue.vote.locked", (QueueManager.countdownSecondsLeft(queue ?: return) ?: 0).toString()))
             return
         }
 
@@ -232,32 +233,29 @@ object QueueEvents : Listener {
     private fun onMapClick(player: Player, event: InventoryClickEvent) {
         val item = event.currentItem ?: return
         if (item.type !in setOf(Material.SLIME_BALL, Material.FIRE_CHARGE)) return
-
         val name = item.itemMeta?.persistentDataContainer?.get(MAP_KEY, PersistentDataType.STRING) ?: return
-        val map = MapManager.maps[name] ?: return
-        QueueManager.recordVote(player, map = name)
-        if (player !in QueueManager.queue) {
-            QueueManager.add(player, map)
+        if (MapManager.maps[name] == null) return
+        QueueManager.joinMap(player, name)
+        if (QueueManager.currentQueueOf(player) != null)
             player.sendMessage(player.locale().chatComponent("queue.join.success"))
-        }
         player.playSound(player, Sound.UI_BUTTON_CLICK, 1.0f, 1.5f)
         player.closeInventory()
     }
 
     @EventHandler
     fun onDrop(event: PlayerDropItemEvent) {
-        if (event.player in QueueManager.queue) event.isCancelled = true
+        if (QueueManager.currentQueueOf(event.player) != null) event.isCancelled = true
     }
 
     @EventHandler
     fun onBlockBreak(event: BlockBreakEvent) {
-        if (event.player in QueueManager.queue || Cage.isProtected(event.block))
+        if (QueueManager.currentQueueOf(event.player) != null || Cage.isProtected(event.block))
             event.isCancelled = true
     }
 
     @EventHandler
     fun onBlockPlace(event: BlockPlaceEvent) {
-        if (event.player in QueueManager.queue) event.isCancelled = true
+        if (QueueManager.currentQueueOf(event.player) != null) event.isCancelled = true
     }
 
     @EventHandler
@@ -298,7 +296,7 @@ object QueueEvents : Listener {
     }
 
     fun openMapMenu(player: Player): Boolean {
-        val maps = QueueManager.mapVoteCandidates()
+        val maps = QueueManager.availableMaps()
         if (maps.isEmpty()) return false
 
         val inv = Bukkit.createInventory(null, 36, mapTitle)
@@ -314,7 +312,7 @@ object QueueEvents : Listener {
     // with an open map menu are visited.
     fun refreshMapMenus() {
         if (openMapMenus.isEmpty()) return
-        val maps = QueueManager.mapVoteCandidates()
+        val maps = QueueManager.availableMaps()
         if (maps.isEmpty()) return
         openMapMenus.forEach { uuid ->
             val player = Bukkit.getPlayer(uuid) ?: return@forEach
@@ -324,7 +322,8 @@ object QueueEvents : Listener {
     }
 
     private fun fillMapMenu(inv: Inventory, maps: List<ArenaMap>, locale: Locale) {
-        val leader = maps.maxByOrNull { QueueManager.mapVoteCounts()[it.name] ?: 0 }?.name
+        val queued = { name: String -> QueueManager.queueForMap(name)?.players?.size ?: 0 }
+        val leader = maps.maxByOrNull { queued(it.name) }?.name
         // Clear the map slots first: when maps disappear from the pool (deleted, no schematic),
         // the stale item would otherwise keep sitting in the menu and still be clickable.
         for (slot in 10..16)
@@ -333,24 +332,24 @@ object QueueEvents : Listener {
             inv.setItem(slot, null)
         maps.forEachIndexed { i, map ->
             if (i >= MAX_VISIBLE_MAPS) return@forEachIndexed
-            val votes = QueueManager.mapVoteCounts()[map.name] ?: 0
-            // Only mark the leader green if it actually has votes; otherwise every map stays grey.
-            val isLeader = votes > 0 && map.name == leader
-            inv.setItem((if (i < 7) 1 else 2) * 9 + 1 + i % 7, mapItem(map, votes, isLeader, locale))
+            val n = queued(map.name)
+            // Only mark the leader green if it actually has players; otherwise every map stays grey.
+            val isLeader = n > 0 && map.name == leader
+            inv.setItem((if (i < 7) 1 else 2) * 9 + 1 + i % 7, mapItem(map, n, isLeader, locale))
         }
     }
 
     private fun openVoteMenu(player: Player) {
         val inv = Bukkit.createInventory(null, 54, voteTitle)
         border(inv, 54)
-        fillMenu(inv, player.locale())
+        fillMenu(inv, player, player.locale())
         player.openInventory(inv)
     }
 
     private fun refreshVoteMenus() {
         Bukkit.getOnlinePlayers().forEach { player ->
             if (player.openInventory.title() != voteTitle) return@forEach
-            fillMenu(player.openInventory.topInventory, player.locale())
+            fillMenu(player.openInventory.topInventory, player, player.locale())
         }
     }
 
@@ -409,10 +408,17 @@ object QueueEvents : Listener {
         })
     }
 
-    private fun fillMenu(inv: Inventory, locale: Locale) {
+    private fun fillMenu(inv: Inventory, player: Player, locale: Locale) {
+        val queue = QueueManager.currentQueueOf(player)
+        val modeCounts = queue?.let { QueueManager.modeVoteCounts(it) } ?: emptyMap()
+        val typeCounts = queue?.let { QueueManager.typeVoteCounts(it) } ?: emptyMap()
+        val timeCounts = queue?.let { QueueManager.timeVoteCounts(it) } ?: emptyMap()
+        val randomVotes = queue?.votes?.values?.count {
+            it.mode == QueueManager.Vote.RANDOM && it.type == QueueManager.Vote.RANDOM && it.time == QueueManager.Vote.RANDOM_TIME
+        } ?: 0
         modeOrder.forEachIndexed { i, ns ->
             val name = locale.string("game.$ns.name")
-            inv.setItem(10 + i, voteItem(modeMaterials[ns] ?: Material.PAPER, name, QueueManager.modeVoteCounts()[ns] ?: 0, locale.string("vote.category.mode"), locale, null))
+            inv.setItem(10 + i, voteItem(modeMaterials[ns] ?: Material.PAPER, name, modeCounts[ns] ?: 0, locale.string("vote.category.mode"), locale, null))
         }
         typeOrder.forEachIndexed { i, ns ->
             val customName = Configuration.modifierCustomNames[ns]
@@ -420,16 +426,15 @@ object QueueEvents : Listener {
             val customDesc = Configuration.modifierCustomDescriptions[ns]
             val desc = customDesc ?: (if (ns == "multi") locale.string("vote.multi.description") else locale.string("modifier.$ns.description"))
             inv.setItem(if (i < 7) 19 + i else 28 + (i - 7), voteItem(
-                typeMaterials[ns] ?: Material.PAPER, name, QueueManager.typeVoteCounts()[ns] ?: 0,
+                typeMaterials[ns] ?: Material.PAPER, name, typeCounts[ns] ?: 0,
                 locale.string("vote.category.type"), locale, desc,
             ))
         }
         timeOrder.forEachIndexed { i, t ->
             val name = "$t ${locale.string("vote.time.seconds")}"
-            inv.setItem(37 + i, voteItem(timeMaterials[t] ?: Material.PAPER, name, QueueManager.timeVoteCounts()[t] ?: 0, locale.string("vote.category.time"), locale, null))
+            inv.setItem(37 + i, voteItem(timeMaterials[t] ?: Material.PAPER, name, timeCounts[t] ?: 0, locale.string("vote.category.time"), locale, null))
         }
         // Bottom-right "Random" button: votes for random mode, type, time and item loot at once.
-        val randomVotes = QueueManager.randomVoteCount()
         inv.setItem(43, ItemStack(Material.NETHER_STAR).apply {
             val meta = itemMeta
             meta.displayName(Component.text(locale.string("vote.random")).color(NamedTextColor.GOLD))
@@ -478,6 +483,7 @@ object QueueEvents : Listener {
     }
 
     private fun mapItem(map: ArenaMap, votes: Int, isLeader: Boolean, locale: Locale): ItemStack {
+        val queued = QueueManager.queueForMap(map.name)?.players?.size ?: 0
         // Custom material from config, else default (SLIME_BALL for leader, FIRE_CHARGE for others)
         val customMaterial = Configuration.mapCustomMaterials[map.name]?.let { Material.matchMaterial(it) }
         val material = customMaterial ?: (if (isLeader) Material.SLIME_BALL else Material.FIRE_CHARGE)
@@ -496,6 +502,8 @@ object QueueEvents : Listener {
             }
             add(Component.text(locale.string("map.players.playing", playersPlaying.toString()))
                 .color(if (playersPlaying > 0) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY))
+            add(Component.text(locale.string("map.queued", queued.toString()))
+                .color(if (queued > 0) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY))
             add(Component.text(locale.string("map.spawns.count", map.spawns.size.toString()))
                 .color(NamedTextColor.DARK_GRAY))
         })
