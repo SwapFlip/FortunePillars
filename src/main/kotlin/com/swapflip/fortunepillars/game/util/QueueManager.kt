@@ -64,6 +64,8 @@ object QueueManager : Ticking {
     private var lastSentSecond = -1
     private var lastWaitSecond = -1
 
+    private val gameIdCounter = java.util.concurrent.atomic.AtomicInteger(0)
+
     // ---- lookups ----
     fun currentQueueOf(player: Player): MapQueue? = mapQueues.values.firstOrNull { player in it.players }
     fun queueForMap(mapName: String): MapQueue? = mapQueues[mapName]
@@ -249,17 +251,6 @@ object QueueManager : Ticking {
     }
 
     // ---- start ----
-    private fun <T> List<T>.mostVoted(default: T): T {
-        val counts = groupingBy { it }.eachCount()
-        val max = counts.values.maxOrNull() ?: return default
-        return counts.filterValues { it == max }.keys.random()
-    }
-
-    private fun <T> resolveVote(votes: List<T>, sentinel: T, options: List<T>, default: T): T {
-        val winner = votes.mostVoted(default)
-        return if (winner == sentinel) options.random() else winner
-    }
-
     private fun check(queue: MapQueue) {
         if (GameManager.games.size >= Configuration.maxConcurrentGames) return
         if (queue.players.size < Configuration.queueMinPlayers) return
@@ -279,7 +270,7 @@ object QueueManager : Ticking {
 
     private fun startGame(queue: MapQueue, players: List<Player>, mode: GameCompanion<*>, typeName: String, itemTime: Int) {
         val id = Game.generateId()
-        val idInt = id.hashCode()
+        val idInt = gameIdCounter.incrementAndGet()
         val placeholders = mutableMapOf("id" to id, "mode" to mode.gameInfo.namespace, "players" to players.size)
 
         // Resolve the world: a fresh per-game world, or the shared world when per-game-worlds is off.
