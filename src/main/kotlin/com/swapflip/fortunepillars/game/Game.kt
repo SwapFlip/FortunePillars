@@ -1172,16 +1172,10 @@ abstract class Game(
         // into the freshly-reset arena.
         runCatching { Cage.clearGameCages() }
         runCatching { buildings.reset() }
-        // Authoritative arena re-paste on the dedicated queue world: when this is the last game
-        // still using the world, re-paste the current arena so the next round starts from a pristine
-        // schematic rather than relying solely on the change-tracking reset above. Guarded so a
-        // failure can never break cleanup - the change-tracking reset is the real safety net.
-        if (Configuration.arenaResetRePaste
-            && world.name == Cage.queueWorldName
-            && (worldUsers[world] ?: 0) <= 1) {
-            runCatching { QueueManager.rePasteCurrentArena() }
-                .onFailure { org.bukkit.Bukkit.getLogger().warning("Arena re-paste failed; relying on change-tracking reset.") }
-        }
+        // Per-game worlds are deleted after the match instead of re-pasted: the world is fresh each
+        // game, so there is nothing to reset. The shared world (per-game-worlds: false) is left alone.
+        if (Configuration.perGameWorlds && WorldManager.isGameWorld(world))
+            WorldManager.deleteGameWorld(world)
         bossBar?.stop()
         // The barrier cylinder sits outside the arena wipe radius, so it removes its own blocks
         // (in batches, so the end of a match never spikes the server).
