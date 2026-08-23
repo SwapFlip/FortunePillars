@@ -33,31 +33,11 @@ object QueueScoreboards {
 
     private val boards = mutableMapOf<UUID, SimpleScoreboard>()
 
-    // Vote tallies are global and only change when someone votes, yet `resolve` runs once per
-    // placeholder per board update. Recomputing the four tallies on every placeholder is wasteful,
-    // so we recompute them at most once per server tick and reuse the result for the rest of it.
-    private var cachedTime: Map<Int, Int>? = null
-    private var cachedMode: Map<String, Int>? = null
-    private var cachedType: Map<String, Int>? = null
-    private var cachedMap: Map<String, Int>? = null
-    private var cachedTick: Int = -1
-
-    // Recomputes the four vote tallies at most once per server tick. `Bukkit.getCurrentTick()` is
-    // stable within a single board update (all placeholders share it) and changes between updates,
-    // so the cached maps are reused for every placeholder of every player in a given tick.
-    private fun refreshVoteCache() {
-        val tick = Bukkit.getCurrentTick()
-        if (tick == cachedTick) return
-        cachedTime = QueueManager.timeVoteCounts()
-        cachedMode = QueueManager.modeVoteCounts()
-        cachedType = QueueManager.typeVoteCounts()
-        cachedMap = QueueManager.mapVoteCounts()
-        cachedTick = tick
-    }
-
     fun show(player: Player) {
         if (!Configuration.queueScoreboardEnabled) return
         if (boards.containsKey(player.uniqueId)) return
+
+        val queue = QueueManager.currentQueueOf(player) ?: return
 
         val interval = Configuration.queueScoreboardUpdateInterval.toLong()
         val title = MINI_MESSAGE.deserialize(Configuration.queueScoreboardTitle)
@@ -66,10 +46,10 @@ object QueueScoreboards {
         val entries = if (Configuration.queueScoreboardLines.isNotEmpty()) {
             Configuration.queueScoreboardLines.map { line ->
                 val template = ScoreboardTemplates.parse(line, PLACEHOLDERS)
-                ScoreboardTemplates.TemplateEntry(template, showNumbers) { locale, key -> resolve(key, player, locale) }
+                ScoreboardTemplates.TemplateEntry(template, showNumbers) { locale, key -> resolve(key, player, queue, locale) }
             }
         } else {
-            defaultEntries(player)
+            defaultEntries(player, queue)
         }.toTypedArray()
 
         runCatching {
@@ -87,21 +67,21 @@ object QueueScoreboards {
 
     // The built-in queue scoreboard, used when `queue-scoreboard.lines` is empty. Localized per
     // viewer; values are rebuilt on every update cycle.
-    private fun defaultEntries(player: Player): List<ScoreboardEntry> = listOf(
+    private fun defaultEntries(player: Player, queue: MapQueue): List<ScoreboardEntry> = listOf(
         ScoreboardTemplates.CachedEntry { p ->
-            mini("<gray>${p.locale().string("scoreboard.queue.players")}: <white>${QueueManager.queue.size}<gray>/<white>${Configuration.queueMinPlayers}")
+            mini("<gray>${p.locale().string("scoreboard.queue.players")}: <white>${queue.players.size}<gray>/<white>${Configuration.queueMinPlayers}")
         },
         ScoreboardTemplates.CachedEntry { p ->
-            mini("<gray>${p.locale().string("scoreboard.queue.status")}: ").append(statusComponent(p.locale()))
+            mini("<gray>${p.locale().string("scoreboard.queue.status")}: ").append(statusComponent(p.locale(), queue))
         },
         ScoreboardTemplates.CachedEntry { p ->
-            mini("<gray>${p.locale().string("scoreboard.queue.map")}: <white>").append(Component.text(currentMapName(p.locale())))
+            mini("<gray>${p.locale().string("scoreboard.queue.map")}: <white>").append(Component.text(currentMapName(p.locale(), queue)))
         },
         ScoreboardTemplates.CachedEntry { p ->
-            mini("<gray>${p.locale().string("scoreboard.queue.top-mode")}: <white>${topMode(p.locale())}")
+            mini("<gray>${p.locale().string("scoreboard.queue.top-mode")}: <white>${topMode(p.locale(), queue)}")
         },
         ScoreboardTemplates.CachedEntry { p ->
-            mini("<gray>${p.locale().string("scoreboard.queue.top-map")}: <white>${topMap(p.locale())}")
+            mini("<gray>${p.locale().string("scoreboard.queue.top-map")}: <white>${topMap(p.locale(), queue)}")
         },
         ScoreboardTemplates.CachedEntry { p ->
             mini("<gray>${p.locale().string("scoreboard.queue.online")}: <white>${Bukkit.getOnlinePlayers().size}")
@@ -110,27 +90,27 @@ object QueueScoreboards {
 
     // Resolves one <placeholder> of the queue scoreboard on every update. Vote placeholders fall
     // back to what would actually be used when nobody voted: the configured default mode, the
-    // plain modifier, the default item time and the currently pasted arena.
-    private fun resolve(key: String, player: Player, locale: Locale): String {
-        refreshVoteCache()
+    // plain modifier, the default item time and the queue's arena.
+    private fun resolve(key: String, player: Player, queue: MapQueue, locale: Locale): String {
+        val modeCounts = QueueManager.modeVoteCounts(queue)
+        val typeCounts = QueueManager.typeVoteCounts(queue)
+        val timeCounts = QueueManager.timeVoteCounts(queue)
         return when (key) {
-            "players" -> QueueManager.queue.size.toString()
+            "players" -> queue.players.size.toString()
             "min" -> Configuration.queueMinPlayers.toString()
             "max" -> Configuration.queueMaxPlayers.toString()
-            "needed" -> (Configuration.queueMinPlayers - QueueManager.queue.size).coerceAtLeast(0).toString()
-            "slots-left" -> (Configuration.queueMaxPlayers - QueueManager.queue.size).coerceAtLeast(0).toString()
-            "countdown" -> QueueManager.countdownSecondsLeft?.toString() ?: "-"
-            "status" -> MINI_MESSAGE.serialize(statusComponent(locale))
-            "map" -> currentMapName(locale)
-            "mode-vote" -> topMode(locale)
-            "type-vote" -> topType(locale)
-            "time-vote" -> (cachedTime ?: QueueManager.timeVoteCounts()).filterKeys { it != Int.MIN_VALUE }.maxWithOrNull(compareBy({ it.value }, { it.key }))
+            "needed" -> (Configuration.queueMinPlayers - queue.players.size).coerceAtLeast(0).toString()
+            "slots-left" -> (Configuration.queueMaxPlayers - queue.players.size).coerceAtLeast(0).toString()
+            "countdown" -> QueueManager.countdownSecondsLeft(queue)?.toString() ?: "-"
+            "status" -> MINI_MESSAGE.serialize(statusComponent(locale, queue))
+            "map" -> currentMapName(locale, queue)
+            "mode-vote" -> topMode(locale, queue)
+            "type-vote" -> topType(locale, queue)
+            "time-vote" -> timeCounts.filterKeys { it != Int.MIN_VALUE }.maxWithOrNull(compareBy({ it.value }, { it.key }))
                 ?.takeIf { it.value > 0 }?.let { "${it.key}s" } ?: "${Configuration.queueDefaultTime}s"
-            "map-vote" -> topMap(locale)
-            "map-votes" -> (cachedMap ?: QueueManager.mapVoteCounts()).filterKeys { it != QueueManager.Vote.RANDOM }
-                .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }
-                ?.let { (map, n) -> "${MapManager.maps[map]?.displayName ?: map} ($n)" } ?: "-"
-            "votes-cast" -> QueueManager.votesCast().toString()
+            "map-vote" -> topMap(locale, queue)
+            "map-votes" -> currentMapName(locale, queue).let { "$it (${queue.players.size})" }
+            "votes-cast" -> QueueManager.votesCast(queue).toString()
             "online" -> Bukkit.getOnlinePlayers().size.toString()
             "games" -> GameManager.games.size.toString()
             "player" -> player.name.escapeTags()
@@ -142,42 +122,39 @@ object QueueScoreboards {
 
     // "Waiting for players..." while below the minimum, a live countdown once it fills - and a
     // distinct state after a failed start, so players know why nothing is happening.
-    private fun statusComponent(locale: Locale): Component {
+    private fun statusComponent(locale: Locale, queue: MapQueue): Component {
         if (QueueManager.isStartFailed)
             return MINI_MESSAGE.deserialize(locale.string("scoreboard.queue.status-failed"))
-        val secondsLeft = QueueManager.countdownSecondsLeft
+        val secondsLeft = QueueManager.countdownSecondsLeft(queue)
         return if (secondsLeft != null)
             MINI_MESSAGE.deserialize(locale.string("scoreboard.queue.status-starting", secondsLeft.toString()))
         else
             MINI_MESSAGE.deserialize(locale.string("scoreboard.queue.status-waiting"))
     }
 
-    private fun currentMapName(locale: Locale): String =
-        QueueManager.currentArenaMap()?.let { it.displayName ?: it.name } ?: locale.string("scoreboard.queue.random")
+    private fun currentMapName(locale: Locale, queue: MapQueue): String =
+        queue.map.displayName ?: queue.map.name
 
     // Deterministic vote leaders for display: highest count wins, ties resolved alphabetically
     // (unlike the actual game-start roll, which breaks ties randomly). With no votes at all they
     // fall back to what a start right now would actually use - the configured default mode, the
-    // plain modifier and the currently pasted arena.
-    private fun topMode(locale: Locale): String {
-        val best = (cachedMode ?: QueueManager.modeVoteCounts()).filterKeys { it != QueueManager.Vote.RANDOM }
+    // plain modifier and the queue's arena.
+    private fun topMode(locale: Locale, queue: MapQueue): String {
+        val best = QueueManager.modeVoteCounts(queue).filterKeys { it != QueueManager.Vote.RANDOM }
             .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }?.key
             ?: return Configuration.queueMode.gameInfo.name(locale)
         return Registry.modes[best]?.gameInfo?.name(locale) ?: best
     }
 
-    private fun topType(locale: Locale): String {
-        val best = (cachedType ?: QueueManager.typeVoteCounts()).filterKeys { it != QueueManager.Vote.RANDOM }
+    private fun topType(locale: Locale, queue: MapQueue): String {
+        val best = QueueManager.typeVoteCounts(queue).filterKeys { it != QueueManager.Vote.RANDOM }
             .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }?.key
             ?: return locale.string("modifier.normal.name")
         return if (best == "multi") locale.string("modifier.multi.name") else locale.string("modifier.$best.name")
     }
 
-    private fun topMap(locale: Locale): String {
-        val best = (cachedMap ?: QueueManager.mapVoteCounts()).filterKeys { it != QueueManager.Vote.RANDOM }
-            .maxWithOrNull(compareBy({ it.value }, { it.key }))?.takeIf { it.value > 0 }?.key
-            ?: return currentMapName(locale)
-        return MapManager.maps[best]?.let { it.displayName ?: it.name } ?: best
+    private fun topMap(locale: Locale, queue: MapQueue): String {
+        return queue.map.let { it.displayName ?: it.name }
     }
 
     private fun mini(text: String): Component = MINI_MESSAGE.deserialize(text)
