@@ -1,27 +1,85 @@
 ### Plugin Name ###
-name: PillarPeril
+name: FortunePillars
 
 ### Plugin Description ###
-description: Open-Source & customizable "Pillars of Fortune"-like game — spawn on bedrock pillars, get random items, and dominate!
+description: Open-Source "Fortune Pillars"-style minigame — spawn on bedrock pillars, get random items, and dominate!
 
 ### Build Version ###
-version: 0.2.2
+version: 0.1
 
 ### Main Class ###
-main: com.marcpg.pillarperil.PillarPeril
+main: com.swapflip.fortunepillars.FortunePillars
 
 ### Loader Class ###
-loader: com.marcpg.pillarperil.PPLoader
+loader: com.swapflip.fortunepillars.FortunePillarsLoader
 
 ### PaperAPI Version ###
 api-version: '1.20'
 
 ### Developers of the Plugin ###
 authors:
-  - MarcPG
+  - SwapFlip
 
 ### Plugin Website ###
-website: https://github.com/MarcPG1905/PillarPeril
+website: https://github.com/SwapFlip/FortunePillars
 
 ### Logging Prefix ###
-prefix: PP
+prefix: FP
+
+### Soft Dependencies ###
+dependencies:
+  server:
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+      join-classpath: true
+
+### Commands ###
+commands:
+  game:
+    description: Utilities for managing Fortune Pillars games or starting new ones.
+    usage: /game <start|stop|list|info>
+    aliases: [pillar-peril, match, round]
+  pp:
+    description: "Fortune Pillars root command. Sub-commands: game, queue, map, config."
+    usage: /pp <forcestart|leave|game|queue|map|config>
+  pof:
+    description: "Fortune Pillars viewer commands. Sub-command: spectate."
+    usage: /pof <spectate>
+  pp-config:
+    description: Manage the FortunePillars configuration.
+    usage: /pp-config <reload|modify>
+    aliases: [pillar-peril-config, pp-settings]
+
+### Permissions ###
+permissions:
+  fortunepillars.start:
+    description: Allows starting a Fortune Pillars game.
+    default: op
+  fortunepillars.stop:
+    description: Allows stopping a running Fortune Pillars game.
+    default: op
+  fortunepillars.list:
+    description: Allows listing all running Fortune Pillars games.
+    default: true
+  fortunepillars.info:
+    description: Allows viewing detailed information about a running Fortune Pillars game.
+    default: true
+  fortunepillars.config:
+    description: Allows managing the plugin configuration in-game.
+    default: op
+  fortunepillars.map:
+    description: Allows creating and managing Fortune Pillars maps.
+    default: op
+  fortunepillars.spectate:
+    description: Allows spectating maps via /pof spectate.
+    default: true
+  fortunepillars.bypass:
+    description: Exempts the player from being teleported out of plugin worlds (queue/game/lobby) by the stranded-player safety net.
+    default: op
+  fortunepillars.forcestart:
+    description: Allows force starting a Fortune Pillars game.
+    default: op
+  fortunepillars.queue.admin:
+    description: Allows managing the queue (list, add, remove, clear players).
+    default: op

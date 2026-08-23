@@ -9,8 +9,8 @@ plugins {
     alias(libs.plugins.versionCatalogueUpdate)
 }
 
-group = "com.marcpg.pillarperil"
-version = "0.2.2"
+group = "com.swapflip.fortunepillars"
+version = "0.1"
 description = "Open-Source & customizable \"Pillars of Fortune\"-like game — spawn on bedrock pillars, get random items, and dominate!"
 
 versionCatalogUpdate {
@@ -40,12 +40,20 @@ dependencies {
     compileOnly(kotlin("stdlib"))
     compileOnly(libs.paper.api)
     compileOnly("com.mojang:brigadier:1.0.18")
+    compileOnly("me.clip:placeholderapi:2.11.6")
 
     implementation(files("libs/ktlibpg-full-${libs.versions.ktlibpg.get()}.jar"))
+    implementation(files("libs/adventure-nbt-4.26.1.jar"))
     implementation(libs.faststats)
+
+    testImplementation(kotlin("test"))
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
+
     build {
         dependsOn(shadowJar)
     }

@@ -6,10 +6,24 @@
 # #_________________|_|   |_|_|_|\__,_|_|  |_|   \___|_|  |_|_|_________________# #
 # #                                Configuration                                # #
 # #                                                                             # #
-# #       SOURCE-CODE:   https://github.com/MarcPG1905/PillarPeril              # #
-# #       BUGS & ISSUES: https://github.com/MarcPG1905/PillarPeril/issues       # #
+# #       SOURCE-CODE:   https://github.com/SwapFlip/FortunePillars                     # #
+# #       BUGS & ISSUES: https://github.com/SwapFlip/FortunePillars/issues              # #
 # #                                                                             # #
 # ############################################################################### #
+
+
+# Configuration #
+# Settings for the plugin's own config file handling.
+
+# Automatically reload the config when config.yml changes on disk. The file is checked every few
+# seconds, so you can edit the config in place while the server runs: no restart and no
+# /pp-config reload needed. Loot pools, modifiers and menus pick the new values up from the next
+# game; world and queue settings still need a restart.
+# The plugin never overwrites the config file by itself - the file is only written when you change
+# a value through /pp-config modify.
+# Default: true
+config:
+  auto-reload: true
 
 
 # Platform Height #
@@ -22,13 +36,6 @@ platform-height: 200
 # The material the platforms are made of.
 # Default: bedrock
 platform-material: bedrock
-
-
-# Max Fall Distance #
-# The maximum distance you can fall from the platforms until you die.
-# This number will be extracted from the pillar height to determine the y-coordinate you die at.
-# Default: 25.0
-max-fall: 25.0
 
 
 # Pillar Distance Factor #
@@ -58,11 +65,31 @@ ending-commands:
   - /say Ending game with cause {cause}... # <- example, you can freely remove this and leave the list empty.
 
 
+# Rewards & Leaderboards #
+# Phase 3 progression. Wins can pay out Vault economy and run console commands per winner.
+rewards:
+  # Vault payout to each winner, in economy units (requires the Vault plugin + an economy). 0 = off.
+  win-amount: 0.0
+  # Console commands run once per winner. %player% is replaced with the winner's name.
+  # Leave empty for no reward commands.
+  win-commands: []
+
+# How many rows the /pp top leaderboards show.
+leaderboard:
+  size: 10
+
+
 # Respawn at Config #
 # Whether to respawn players at the configured `player-spawn` below instead of making them spectate.
 # If spectating (=false), it will spawn players in spectator mode in the middle of the game.
 # Default: false
 respawn-at-config: false
+
+
+# The global void death height: players below this y-coordinate die.
+# Maps can override this per-map with their own `death-height` (see `maps` command / map info).
+# Default: 0
+death-height: 0
 
 
 # Player Spawn #
@@ -74,7 +101,7 @@ player-spawn:
   game-mode: adventure
 
   # The world to spawn in. The default world is called "world".
-  world: crmapin
+  world: world
 
   # The location to spawn the player at.
   # If the y-component is set to -64.0, the player will spawn at the world spawn.
@@ -95,11 +122,21 @@ queue:
   min-players: 2
 
   # The maximum amount of players in a match. A game will include as many queued players as possible.
-  max-players: 100
+  # Default: 8 (a standard arena map has 8 spawns)
+  max-players: 8
 
-  # The interval in seconds between checking if the amount of player is valid and starting a game.
-  # Set to -1 to start instantly as soon as `min-players` queued.
-  check-interval: 5
+  # The countdown in seconds before a game automatically starts, once the queue reached `min-players`.
+  # Set to 0 to start instantly.
+  # Default: 60
+  start-delay: 60
+
+  # The countdown when the queue is at least half full, up to `max-players`.
+  # Default: 30
+  start-delay-half: 30
+
+  # The countdown when the queue is completely full.
+  # Default: 5
+  start-delay-full: 5
 
   # How players enter or leave the queue.
   #   Available Methods:
@@ -108,8 +145,12 @@ queue:
   method: command
 
   # The game mode to use when starting a new game using the queue.
-  # See below ('modes' section) for list of available game modes.
-  mode: original
+  # This is also the fallback mode when no votes are cast.
+  #   Available Modes:
+  #     | -> normal (classic Pillars of Fortune), blocky (blocks & occasional PvP gear),
+  #     | -> action (fast multi-drops, lots of power-ups), op (netherite, bosses, instant-win gear)
+  # Default: normal
+  mode: normal
 
   # The world to start the game in. Example value could be `game-{id}`.
   #   Available Placeholders:
@@ -124,6 +165,15 @@ queue:
     x: 0.0
     y: -64.0
     z: 0.0
+
+  # The maps that games can be played on. A random map is picked for every game.
+  # If the list is empty, every saved map (via /pp map setup) can be picked.
+  # Each map must have at least as many spawns as the amount of players in the game.
+  map-pool: []
+
+  # The item-time that is used when no votes are cast (in seconds).
+  #   Available Vote Options: 3, 5, 10, 15
+  default-item-time: 10
 
   # An ordered list of commands to execute before any world or location is accessed.
   # This should only really be used to create a world for the game when using another plugin like MultiVerse.
@@ -163,140 +213,533 @@ sound-effects:
   item: true
 
 
+# Menu #
+# Titles of the picker menus and the queue lobby items, rendered through MiniMessage - colors,
+# gradients and formatting are supported (e.g. "<gold><bold>Select a Map").
+menu:
+
+  # The title of the game mode / modifier / time vote menu.
+  # Default: Vote for Game Mode
+  vote.title: Vote for Game Mode
+
+  # The title of the map selection menu.
+  # Default: Select a Map
+  map.title: Select a Map
+
+  # The title of the multi-modifier picker (when the "multi" modifier is voted).
+  # Default: Choose Modifiers
+  multi.title: Choose Modifiers
+
+  # The name of the item that opens the vote menu (slot 1 in the queue lobby).
+  # Default: <gold><bold>Vote Menu
+  map-item.name: <gold><bold>Vote Menu
+
+  # The name of the leave-queue item (slot 9 in the queue lobby).
+  # Default: <red><bold>Leave Queue
+  leave-item.name: <red><bold>Leave Queue
+
+
 # Items #
 # All settings related to the items players can receive.
 items:
 
   # A list of all items which will never be given to players, independent of the game mode.
+  # This already excludes all operator-only items, horse armor, boss eggs and peaceful mob eggs
+  # by default.
   blacklist:
     - air
     - bedrock
+    - command_block
+    - chain_command_block
+    - repeating_command_block
+    - command_block_minecart
+    - barrier
+    - structure_block
+    - structure_void
+    - light
+    - debug_stick
+    - spawner
+    - jigsaw
+    - dragon_egg
     - ender_dragon_spawn_egg
+    - wither_spawn_egg
+    - elder_guardian_spawn_egg
+    - warden_spawn_egg
+    - leather_horse_armor
+    - iron_horse_armor
+    - golden_horse_armor
+    - diamond_horse_armor
+    - allay_spawn_egg
+    - axolotl_spawn_egg
+    - bat_spawn_egg
+    - bee_spawn_egg
+    - cat_spawn_egg
+    - chicken_spawn_egg
+    - cod_spawn_egg
+    - cow_spawn_egg
+    - dolphin_spawn_egg
+    - donkey_spawn_egg
+    - fox_spawn_egg
+    - frog_spawn_egg
+    - glow_squid_spawn_egg
+    - goat_spawn_egg
+    - horse_spawn_egg
+    - llama_spawn_egg
+    - mooshroom_spawn_egg
+    - mule_spawn_egg
+    - ocelot_spawn_egg
+    - panda_spawn_egg
+    - parrot_spawn_egg
+    - pig_spawn_egg
+    - polar_bear_spawn_egg
+    - rabbit_spawn_egg
+    - salmon_spawn_egg
+    - sheep_spawn_egg
+    - skeleton_horse_spawn_egg
+    - sniffer_spawn_egg
+    - squid_spawn_egg
+    - strider_spawn_egg
+    - tadpole_spawn_egg
+    - trader_llama_spawn_egg
+    - tropical_fish_spawn_egg
+    - turtle_spawn_egg
+    - villager_spawn_egg
+    - wandering_trader_spawn_egg
+    - wolf_spawn_egg
+    - zombie_horse_spawn_egg
+
+  # The interval in seconds between removing dropped items (entities) from the arena, to prevent lag
+  # in long games. Set to 0 to disable. Items that have been on the ground for less than 30 seconds are kept.
+  # Default: 120
+  cleanup-interval: 120
+
+  # Whether newly received items are never placed into the currently held slot, so you can keep
+  # placing blocks while collecting. If no other slot is free, the item drops on the ground instead.
+  # Default: true
+  avoid-held-slot: true
+
+  # The loot pool used by the normal mode. When empty, the normal mode plays the balanced default
+  # weights: every legal item is in the mix, weighted so that blocks, food and low-tier gear
+  # dominate - diamond and netherite gear, tridents, elytra, totems and enchanted apples are
+  # barred by the mode's built-in weights (they would instantly end a fight between naked
+  # players), and junk like operator-only items and boss eggs never drops.
+  # Add weighted entries below (e.g. `diamond_sword: 5`) to override the default weights entirely
+  # and make your own list; the weight makes items rarer or more common than the rest.
+  # Note: the blocky, action and op modes always play their own weighting profiles and are not
+  # affected by this pool.
+  # NOTE: full per-mode loot control (weights, the full allowed/banned item lists, per-item-family
+  # enchant chances, power-up pool, special items and potion pools) now lives in the per-mode files
+  # `plugins/FortunePillars/modes/<mode>.yml`, which are created automatically on first run and are
+  # edited live. This `pool` key only affects the normal mode and is only read as a fallback when
+  # `modes/normal.yml` is missing.
+  pool: {}
+
+  # Power-ups: a small chance that a drop is replaced by a useful power-up item (golden apple,
+  # potions, ender pearl, ...) or a special item (Super Star, Fireball, Aid Platform). Special
+  # items have colored names, lore explaining how to use them and an enchantment glint.
+  power-ups: true
+
+  # Percent chance a drop is a power-up instead of a regular random item.
+  # Default: 10
+  power-up-chance: 10
+
+  # Percent chance a drop is replaced by a special item (Super Star, Fireball, Aid Platform)
+  # on its own, separate from the power-up roll above. Specials never drop alongside a normal
+  # item - they take the drop's place.
+  # Default: 3
+  special-chance: 3
+
+  # Percent chance weapons, tools and armor drop pre-enchanted. Enchanted drops are rare on
+  # purpose: a dropped sword should feel like a reward, not outclass every fight.
+  # Default: 10
+  enchant-chance: 10
 
 
-# Scoreboard #
-# The sidebar scoreboard shown during a game. Supports MiniMessage formatting and these placeholders:
-#   | -> '<mode>'   : the name of the game mode
-#   | -> '<player>' : your name
-#   | -> '<time>'   : time remaining in the game
-#   | -> '<kills>'  : your current kill count
-# If you leave the lines list empty, the built-in default scoreboard will be used instead.
+# Scoreboard (In-Game) #
+# The sidebar scoreboard every player sees while fighting in a game.
+#
+# GENERAL NOTES
+#   * All texts support MiniMessage formatting - colors, gradients, bold, hover... e.g.
+#       "<bold><gradient:#71CCF8:#FC91EC:#F87171>Fortune Pillars"
+#     Docs: https://docs.advntr.dev/minimessage/format.html
+#   * Lines are shown top to bottom, in the order listed here.
+#   * Values are localized per player: placeholders resolve in each viewer's own language.
+#   * Player names are always escaped automatically, so a name like "<Steve>" can never break
+#     the formatting of a line.
+#
+# OPTIONS
+#   enabled ................. Master switch for the in-game scoreboard. Set to false and no game
+#                             scoreboard is created at all (the queue scoreboard is separate!).
+#                             Default: true
+#   title ................... The sidebar header, supports MiniMessage.
+#   update-interval ......... How often (in TICKS, 20 = 1 second) the values refresh. Lower =
+#                             more live, but slightly more packets. Anything between 2 and 20 is
+#                             sensible; the server clamps this to 1..200.
+#                             Default: 5
+#   show-numbers ............ By default the raw line numbers on the right side of the sidebar
+#                             are hidden (blank number format). Set to true to show them instead -
+#                             some servers like the classic numbered look.
+#                             Requires Paper 1.20.3+ (this plugin targets 1.20.4, so it works).
+#                             Default: false
+#   lines ................... One entry per sidebar line. Leave the list EMPTY to fall back to
+#                             the built-in default scoreboard (Mode / Name / Time / Kills).
+#
+# PLACEHOLDERS (usable inside `lines`, wrapped in < >)
+#   | -> '<mode>'      : the game mode being played (Normal, Action, ...)
+#   | -> '<type>'      : the active modifier/event type (Lava Rises, Block Rain, ..., or "-")
+#   | -> '<map>'       : the arena map's name, or "-" when playing without one
+#   | -> '<player>'    : your own name
+#   | -> '<time>'      : time remaining until the round ends (e.g. "9m 32s")
+#   | -> '<kills>'     : your current kill count
+#   | -> '<alive>'     : how many players are still alive
+#   | -> '<eliminated>': how many players have been eliminated so far
+#   | -> '<countdown>' : the item countdown ("3", "2", "1" ... right before the next drop)
+#   | -> '<health>'    : your health in hearts (e.g. "10" or "6.5")
+#   | -> '<ping>'      : your network ping - styled by `ping-style` below
+#   | -> '<online>'    : players online on the whole server
+#   | -> '<id>'        : this game's short ID (same as /game info uses)
+#   | -> '<leader>'    : current kill leader as "Name (kills)", or "-" when nobody has killed yet
+#   | -> '<started>'   : how many players the match started with
+#   | -> '<world>'     : name of the world the match is played in
+#   | -> '<coords>'    : your block position as "x, y, z"
+#   | -> '<facing>'    : compass direction you are facing (N / E / S / W)
+#   | -> '<clock>'     : the server's local time as "HH:mm"
+#   | -> '<border>'    : radius of the invisible barrier wall around the arena
+#   | -> '<death-height>': the y-coordinate below which players die
+#
+# PING DISPLAY (`ping-style`, applies to <ping>)
+#   ms ...... "23ms"  (default - number plus unit suffix)
+#   plain ... "23"    (bare number, style it yourself in the line text)
+#   colored . quality colors: green up to `ping-good-ms`, yellow up to `ping-warn-ms`,
+#             red beyond. Thresholds are validated: warn must be above good.
 scoreboard:
-  title: "<bold><gradient:#71CCF8:#FC91EC:#F87171>Pillar Peril"
+  enabled: true
+  title: "<bold><gradient:#DBCDF0:#9B88CF:#543AAA>ꜰᴏʀᴛᴜɴᴇ ᴘɪʟʟᴀʀꜱ</gradient></bold>"
+  update-interval: 5
+  show-numbers: false
+  ping-style: colored
+  ping-good-ms: 60
+  ping-warn-ms: 120
   lines:
-    - "<gray>Mode: <white><mode>"
-    - "<gray>Player: <white><player>"
-    - "<gray>Time left: <white><time>"
-    - "<gray>Kills: <white><kills>"
+    - ""
+    - "<gradient:#DBCDF0:#9B88CF:#543AAA><bold> ᴍᴀᴛᴄʜ</bold></gradient>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴍᴏᴅᴇ <#555555>» <#00E1D9><mode>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴛʏᴘᴇ <#555555>» <#00E1D9><type>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴍᴀᴘ <#555555>» <#00E1D9><map>"
+    - ""
+    - "<gradient:#DBCDF0:#9B88CF:#543AAA><bold> ꜱᴛᴀᴛꜱ</bold></gradient>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴀʟɪᴠᴇ <#555555>» <#00E1D9><alive>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴋɪʟʟꜱ <#555555>» <#00E1D9><kills>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴛɪᴍᴇ <#555555>» <#F5C81A><time>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴘɪɴɢ <#555555>» <#FFFFFF><ping>"
+    - ""
+    - " <#AAAAAA>craftverse.cc"
+
+
+# Queue Scoreboard #
+# The sidebar scoreboard everyone sees while waiting in the queue lobby. It appears when a player
+# joins the queue and disappears when they leave it (quit, world change, queue leave) or when
+# their game starts - the in-game scoreboard above takes over from there.
+#
+# GENERAL NOTES
+#   * Same MiniMessage support and top-to-bottom ordering as the in-game scoreboard.
+#   * Values refresh themselves on their own - there is no manual refresh to configure beyond
+#     `update-interval`.
+#   * Vote leaders are DISPLAY ONLY: ties for display are broken alphabetically, while the real
+#     game-start roll breaks ties randomly.
+#
+# OPTIONS
+#   enabled ................. Master switch for the queue scoreboard.
+#                             Default: true
+#   title ................... The sidebar header, supports MiniMessage.
+#   update-interval ......... Refresh rate in TICKS (20 = 1 second). The queue only changes once
+#                             per second anyway, so 20 is the sweet spot; clamped to 1..200.
+#                             Default: 20
+#   show-numbers ............ Show the raw line numbers on the right side (see in-game section).
+#                             Default: false
+#   lines ................... One entry per sidebar line. Leave the list EMPTY to fall back to
+#                             the built-in default (Queued / Status / Map / Top mode / Top map /
+#                             Online), which is fully localized per player.
+#
+# PLACEHOLDERS (usable inside `lines`, wrapped in < >)
+#   | -> '<players>'   : players currently queued
+#   | -> '<min>'       : players needed for a game to start (`queue.min-players`)
+#   | -> '<max>'       : maximum players per match (`queue.max-players`)
+#   | -> '<needed>'    : how many MORE players are needed until the countdown starts
+#   | -> '<slots-left>': free queue slots before the match is full (max - queued)
+#   | -> '<countdown>' : seconds until the game starts, or "-" while still waiting
+#   | -> '<status>'    : localized status text - "Waiting for players...", "Starting in Xs!"
+#                        or "Start failed" after a broken start
+#   | -> '<map>'       : the arena currently pasted in the queue world, or "Random"
+#   | -> '<mode-vote>' : most voted game mode - falls back to the configured default mode
+#                        (`queue.mode`) when nobody voted, so it always shows what would be played
+#   | -> '<type-vote>' : most voted modifier - falls back to the plain modifier when nobody voted
+#   | -> '<time-vote>' : most voted item time as "10s" - falls back to `queue.default-item-time`
+#   | -> '<map-vote>'  : most voted map - falls back to the currently pasted arena / "Random"
+#   | -> '<votes-cast>': how many players have cast at least one vote
+#   | -> '<online>'    : players online on the whole server
+#   | -> '<games>'     : games currently running
+#   | -> '<player>'    : your own name
+#   | -> '<world>'     : name of the queue world
+#   | -> '<clock>'     : the server's local time as "HH:mm"
+#
+# VOTE LEADERS ARE DISPLAY ONLY: ties are broken alphabetically on the scoreboard, while the real
+# game-start roll breaks ties randomly. The fallbacks above mirror exactly what a start would use.
+queue-scoreboard:
+  enabled: true
+  title: "<bold><gradient:#DBCDF0:#9B88CF:#543AAA>ꜰᴏʀᴛᴜɴᴇ ᴘɪʟʟᴀʀꜱ</gradient></bold>"
+  update-interval: 20
+  show-numbers: false
+  lines:
+    - ""
+    - "<gradient:#DBCDF0:#9B88CF:#543AAA><bold> ᴍᴀᴛᴄʜᴍᴀᴋɪɴɢ</bold></gradient>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ǫᴜᴇᴜᴇ <#555555>» <#00E1D9><players><#555555>/<#00E1D9><max>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#53E481><status>"
+    - ""
+    - "<gradient:#DBCDF0:#9B88CF:#543AAA><bold> ᴠᴏᴛɪɴɢ</bold></gradient>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴍᴏᴅᴇ <#555555>» <#00E1D9><mode-vote>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴛʏᴘᴇ <#555555>» <#00E1D9><type-vote>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ɪᴛᴇᴍ ᴛɪᴍᴇ <#555555>» <#F5C81A><time-vote>"
+    - " <gradient:#DBCDF0:#9B88CF:#543AAA>┃</gradient> <#AAAAAA>ᴍᴀᴘ <#555555>» <#00E1D9><map-vote>"
+    - ""
+    - " <#AAAAAA>craftverse.cc"
+
+
+# Modifier Customization #
+# Allows you to override the display names and descriptions of modifiers shown in the vote menu.
+# Supports full MiniMessage formatting (colors, gradients, bold, etc.).
+# Keys are the modifier namespaces (e.g. "lava-rises", "speedrun", "tnt-falls", "arrow-rain",
+# "lightning", "moonwalk", "chain-swap", "ablockalypse", "lava-floor", "uhc", "normal", "multi").
+# When empty or missing, the locale strings are used as fallback.
+#
+# Example:
+# modifiers:
+#   custom-names:
+#     lava-rises: "<gradient:#FF4500:#FFD700>Rising Lava</gradient>"
+#     speedrun: "<gold>Speedrun</gold>"
+#   custom-descriptions:
+#     lava-rises: "<gray>Lava rises from below, forcing everyone upward!</gray>"
+#     speedrun: "<gray>Items every 2 seconds with a starting kit.</gray>"
+modifiers-customization:
+  custom-names: {}
+  custom-descriptions: {}
+
+
+# Map Customization #
+# Allows you to customize the item material used for each map in the map selection menu.
+# Keys are map names (exactly as they appear in `/pp map list`), values are material names.
+# When missing or empty, the default is used: SLIME_BALL for the vote leader, FIRE_CHARGE for others.
+# Supports any valid Bukkit material name.
+#
+# Example:
+# maps-customization:
+#   custom-materials:
+#     my_arena: "DIAMOND"
+#     another_map: "EMERALD"
+maps-customization:
+  custom-materials: {}
 
 
 # Default Game Modes #
 # Allows you to configure various properties of the default game modes.
+#
+# NOTE: as of recent versions the per-mode settings for normal, blocky, action and op live in
+# their own, heavily-documented files under `plugins/FortunePillars/modes/<mode>.yml` (created
+# automatically on first run). Those files are the source of truth for a mode's cooldown, time
+# limit, loot weights (with the full allowed/banned item lists), per-item-family enchant chances,
+# power-up pool, special items and potion pools. They are edited live and reloaded automatically.
+# The block below is only read as a fallback when a `modes/<mode>.yml` file is missing entirely,
+# so you normally do not need to touch it.
 modes:
 
   # Example Mode - Example mode to explain what each value does.
   example:
     cooldown: 5 # The cooldown (in seconds) between receiving an item.
-    time-limit: 5min # The total amount of time a game can last. Please only use one time unit.
+    time-limit: 10min # The total amount of time a game can last. Please only use one time unit.
     visual:
       color: "#FFFFFF" # The theme color (as hex code) of the game. Will be used in the scoreboard for example.
       show-scoreboard: true # Whether to show a scoreboard with some info or not.
-      show-actionbar: false # Whether to show an actionbar with the item countdown or not.
       show-bossbar: false # Whether to show a bossbar with the item countdown or not.
     generator:
       horizontal: circular # The horizontal generator, so the layout of vertical pillars/blocks. Either "circular" or "random".
       vertical: pillar # The vertical generator, so the type of platform. Either "pillar" or "block".
 
-  # Blocky Mode - Starts with a weapon; only blocks are given.
+  # Blocky Mode - Mainly building blocks with the occasional piece of PvP gear.
   blocky:
-    cooldown: 10
-    time-limit: 4min
-    visual:
-      color: "#FFAA00"
-      show-scoreboard: true
-      show-actionbar: false
-      show-bossbar: false
-    generator:
-      horizontal: circular
-      vertical: pillar
-
-  # Chaos Mode - No filters, randomized pillars, fast item cooldown.
-  chaos:
-    cooldown: 3
-    time-limit: 8min
-    visual:
-      color: "#FF5555"
-      show-scoreboard: true
-      show-actionbar: false
-      show-bossbar: true
-    generator:
-      horizontal: random
-      vertical: pillar
-
-  # Classic Mode - Classic rules, inspired by CubeCraft.
-  classic:
-    cooldown: 5
-    time-limit: 5min
-    visual:
-      color: "#53A4FF"
-      show-scoreboard: true
-      show-actionbar: false
-      show-bossbar: false
-    generator:
-      horizontal: circular
-      vertical: pillar
-
-  # Item-Only Mode - Only items (no blocks): long & tough.
-  item-only:
     cooldown: 10
     time-limit: 10min
     visual:
-      color: "#FFFF55"
+      color: "#FFAA00"
       show-scoreboard: true
-      show-actionbar: false
       show-bossbar: false
     generator:
       horizontal: circular
       vertical: pillar
+    # Materials this mode must never drop, on top of the global `items.blacklist`. Any item name
+    # works (e.g. "tnt", "golden_apple"); invalid names are ignored. The modes' built-in loot
+    # weights (see below) already define what each mode favors - this list only vetoes items.
+    blacklist: []
 
-  # Item Shuffle Mode - Items replaced every 10s (9 new items).
-  item-shuffle:
-    cooldown: 10
-    time-limit: 5min
+  # Action Mode - Fast paced and flashy: every legal item can drop (netherite, elytra, totems,
+  # enchanted apples and nether stars included), items come quickly, and every drop bursts with
+  # spark particles. A high power-up rate keeps the fight moving.
+  action:
+    cooldown: 3
+    time-limit: 10min
     visual:
-      color: "#A3FF54"
+      color: "#FF5555"
       show-scoreboard: true
-      show-actionbar: true
-      show-bossbar: false
-    generator:
-      horizontal: circular
-      vertical: pillar
-
-  # Original Mode - Original gameplay as seen in early videos.
-  original:
-    cooldown: 5
-    time-limit: 5min
-    visual:
-      color: "#FFFFFF"
-      show-scoreboard: true
-      show-actionbar: false
       show-bossbar: true
     generator:
       horizontal: circular
       vertical: pillar
+    # See the `blacklist` explanation in the blocky mode above.
+    blacklist: []
 
-  # Player Shuffle Mode - All players randomly swapped every 10s.
-  player-shuffle:
+  # Normal Mode - The balanced loot pool: every legal item is in the mix, weighted so that blocks,
+  # food and low-tier gear dominate. Diamond and netherite gear, tridents, elytra, totems,
+  # enchanted apples and the nether star are barred by the mode's built-in weights, so a single
+  # drop can never end the fight between naked players.
+  normal:
     cooldown: 10
-    time-limit: 5min
+    time-limit: 10min
     visual:
-      color: "#54FFAF"
+      color: "#FFFFFF"
       show-scoreboard: true
-      show-actionbar: true
-      show-bossbar: false
+      show-bossbar: true
     generator:
       horizontal: circular
       vertical: pillar
+    # See the `blacklist` explanation in the blocky mode above.
+    blacklist: []
+
+  # OP Mode - The highest gear chance of all modes: diamond and netherite gear, tridents,
+  # enchanted golden apples, totems, elytra - everything that can end a fight in one drop. Blocks
+  # still make up the largest single share of every drop. Nothing is banned: nether stars and raw
+  # TNT drop too (placed TNT auto-primes with a 3s fuse). Boss eggs (wither, elder guardian,
+  # warden) and operator-only items are barred by the global `items.blacklist`.
+  op:
+    cooldown: 10
+    time-limit: 10min
+    visual:
+      color: "#AA00FF"
+      show-scoreboard: true
+      show-bossbar: true
+    generator:
+      horizontal: circular
+      vertical: pillar
+    # See the `blacklist` explanation in the blocky mode above.
+    blacklist: []
+
+
+# Game Event Types (Modifiers) #
+# The event type voted on in the queue. Tuning options for each type.
+#
+# NOTE: as of recent versions each modifier's settings live in their own, heavily-documented file
+# under `plugins/FortunePillars/modifiers/<modifier>.yml` (created automatically on first run).
+# Those files are the source of truth and are edited live / reloaded automatically. The block below
+# is only read as a fallback when a `modifiers/<modifier>.yml` file is missing entirely, so you
+# normally do not need to touch it.
+modifiers:
+
+  # Lava Rises - The lava level rises by one block every item cycle + `interval-extra` seconds
+  # (5->7, 3->5, 10->12, 15->17), anchored just below the map's spectator spawn (or `start-y` when
+  # the map has no spectator spawn). The whole volume below the surface (the pit between the
+  # pillars) is flooded with lava right away and stays flooded as the surface climbs, so there are
+  # never air pockets under the lava. The flood itself follows the surface: it only sinks one layer
+  # per rise, so the pit never drowns players ahead of the lava level. Layers are placed in batches
+  # to avoid lag spikes.
+  lava-rises:
+    start-y: 30 # The y-coordinate the lava starts at and rises from when the map has no spectator spawn.
+    spectator-offset: 70 # Blocks below the spectator spawn the lava starts at when the map has one.
+    start-delay: 10 # Seconds after the game starts before the lava begins to rise.
+    size: 75 # Size of the square play area, centered on the map's spectator spawn, that the lava covers.
+    interval-extra: 2 # Extra seconds added to the mode's item cycle to get the time between two lava rises.
+
+  # TNT Falls - TNT falls onto the play area on its own timer with a configurable fuse.
+  tnt-falls:
+    interval: 10 # Seconds between each round of falling TNT.
+    start-delay: 10 # Seconds after the game starts before TNT begins to fall.
+    fuse-ticks: 200 # The fuse duration of the falling TNT (20 ticks = 1 second).
+    per-drop: 4 # Amount of TNT dropped per round, at separate random positions within the play area.
+    size: 75 # Size of the square play area, centered on the map's spectator spawn, that the TNT falls into. TNT spawns from the world's height limit.
+
+  # Arrow Rain - A steady, endless drizzle of arrows over the whole play area once the start
+  # delay is over. Capped at `max-arrows` concurrent arrows so it never gets overwhelming.
+  arrow-rain:
+    start-delay: 10
+    per-second: 4 # Arrows spawned per second, spread randomly over the whole play area.
+    max-arrows: 120 # Maximum number of arrows in the air at once; no new ones spawn until some land.
+    size: 75
+
+  # Lightning - A random player gets struck (visual + a tiny damage tick) and one random item -
+  # hotbar, armor or offhand - gets enchanted. Players who would not survive the hit are skipped.
+  lightning:
+    interval: 30
+    start-delay: 10
+    damage: 1 # Damage in half-hearts. Default 1 = half a heart.
+
+  # Moonwalk - Continuous moon gravity: everyone gets Jump Boost III and Slow Falling for the
+  # rest of the match once the start delay is over.
+  moonwalk:
+    start-delay: 10
+
+  # Chain Swap - Every player's position shifts to the next player's spot.
+  chain-swap:
+    interval: 30
+    start-delay: 10
+    min-y: 32 # Nobody is ever swapped into a spot below this y-coordinate.
+
+  # Block Rain - Random blocks rain down from the sky in small batches. Literally every
+  # placeable block can fall (fluids, portals, fire and illegal/technical blocks excluded).
+  ablockalypse:
+    interval: 15
+    start-delay: 10
+    per-drop: 30 # Blocks dropped per burst.
+    size: 75
+
+  # Lava Floor - Standing on a block heats it up: after `stand-time` seconds it ignites into
+  # yellow wool, then cooks one stage further every `stage-time` seconds until it is lava.
+  lava-floor:
+    start-delay: 10
+    stand-time: 5 # Seconds of standing before a block turns into yellow wool.
+    stage-time: 3 # Seconds between each further stage (yellow -> orange -> red -> lava).
+
+  # UHC - Natural regeneration is disabled and everyone starts with 5 golden apples. A slice of
+  # the regular drops becomes dedicated healing instead.
+  uhc:
+    heal-chance: 20 # Percent chance a regular drop is converted into a Regeneration or Instant Health potion.
+
+
+# Border #
+# An invisible barrier cylinder around the play area (centered on the spectator spawn) that spawns
+# when the game starts and is removed after the game, so nobody can run out of bounds. Placed and
+# removed in batches to keep it lag-free.
+border:
+  radius: 70 # Horizontal distance from the spectator spawn column.
+  bottom-offset: 40 # Blocks below the spectator spawn's height the wall reaches.
+  top-offset: 60 # Blocks above the spectator spawn's height the wall reaches.
+
+
+# End of Game #
+# Seconds to keep the game registered after it ended, so kill-cam, stats and announcements don't
+# get cut off by an instant cleanup. Set to 0 to clean up instantly.
+# Default: 10
+time-after-game: 10
+
+
+# Winner Celebration #
+# Seconds the last survivor stays in the arena as a spectator (with fireworks and a victory title)
+# before the game officially ends and everyone returns to the lobby. Set to 0 to end instantly.
+# Default: 10
+winner-celebration-seconds: 10
+
+
+# Kill Credit Window #
+# Seconds during which the last damage a player took is remembered, so void/fall knock-offs are
+# credited to the player who dealt the damage.
+# Default: 15
+kill-credit-window: 15
 
 
 # Disable FastStats Integration #
@@ -308,4 +751,4 @@ disable-faststats: false
 
 # The Configuration Version #
 # DO NOT MODIFY THIS, OR THE CONFIGURATION WILL LIKELY BREAK OR BE RESET!
-version: 7
+version: 10

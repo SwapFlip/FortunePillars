@@ -1,4 +1,4 @@
-rootProject.name = "PillarPeril"
+rootProject.name = "FortunePillars"
 
 pluginManagement {
     repositories {
