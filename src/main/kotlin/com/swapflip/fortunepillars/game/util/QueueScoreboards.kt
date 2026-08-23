@@ -92,8 +92,6 @@ object QueueScoreboards {
     // back to what would actually be used when nobody voted: the configured default mode, the
     // plain modifier, the default item time and the queue's arena.
     private fun resolve(key: String, player: Player, queue: MapQueue, locale: Locale): String {
-        val modeCounts = QueueManager.modeVoteCounts(queue)
-        val typeCounts = QueueManager.typeVoteCounts(queue)
         val timeCounts = QueueManager.timeVoteCounts(queue)
         return when (key) {
             "players" -> queue.players.size.toString()
